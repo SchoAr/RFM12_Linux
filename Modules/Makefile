@@ -2,10 +2,10 @@
 #   Adrian Remonda 2014
 
 ifneq ($(KERNELRELEASE),)
-	obj-m := hello.o
+	obj-m := RFM12.o
 	CFLAGS_hello.o := -DDEBUG
 else
-	obj-m := hello.o
+	obj-m := RFM12.o
 	TARGET = 192.168.1.103
 	TARGET_DIR = /root
 	KERNELDIR ?= ~/Driver_Development/Neuer_Ordner/linux-xlnx
