@@ -27,3 +27,10 @@
 *.i*86
 *.x86_64
 *.hex
+
+#driver output
+*.symvers
+*.order
+*.ko
+*.mod.c
+*.mod.o
