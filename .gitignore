@@ -32,5 +32,10 @@
 *.symvers
 *.order
 *.ko
+*.ko.cmd	
 *.mod.c
 *.mod.o
+*.mod.o.mod
+*.o.cmd
+*.tmp_versions/
+*.RFM12.ko.cmd
