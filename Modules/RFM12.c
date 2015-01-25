@@ -12,7 +12,7 @@ static struct gpio leds[] = {
     { 15, GPIOF_OUT_INIT_HIGH, "USERLED" },
 };
 
-static int __init hello_init(void)
+static int __init RFM_init(void)
 {
     int ret = 0;
     int i; 
@@ -30,7 +30,7 @@ static int __init hello_init(void)
       
     return ret;
 }
-static void __exit hello_exit(void)
+static void __exit RFM_exit(void)
 {
     int i; 
     
@@ -41,5 +41,5 @@ static void __exit hello_exit(void)
     gpio_free_array(leds,ARRAY_SIZE(leds));
 }
 
-module_init(hello_init);
-module_exit(hello_exit);
+module_init(RFM_init);
+module_exit(RFM_exit);
