@@ -2,6 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/gpio.h>
+#include <linux/spi/spi.h>
+
 
 MODULE_AUTHOR("Schoenlieb");
 MODULE_DESCRIPTION("A Simple Hello World module");
