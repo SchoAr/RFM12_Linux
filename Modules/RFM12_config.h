@@ -15,6 +15,7 @@
 #define RX_LED 9
 #define TX_LED 14
 #define ON_LED 15
+#define INPUTPIN 51
 /********************************/
 #define RF12_433MHZ     1
 #define RF12_868MHZ     2
