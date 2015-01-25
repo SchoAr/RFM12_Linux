@@ -11,7 +11,9 @@ MODULE_LICENSE("GPL");
 
 
 static struct gpio leds[] = {
-    { 15, GPIOF_OUT_INIT_HIGH, "USERLED" },
+    { 15, GPIOF_OUT_INIT_HIGH, "ON" },
+    { 9, GPIOF_OUT_INIT_HIGH, "RX" },
+    { 14, GPIOF_OUT_INIT_HIGH, "TX" },
 };
 
 static int __init RFM_init(void)
