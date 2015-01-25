@@ -6,7 +6,7 @@
 
 
 MODULE_AUTHOR("Schoenlieb");
-MODULE_DESCRIPTION("A Simple Hello World module");
+MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
 MODULE_LICENSE("GPL");
 
 
