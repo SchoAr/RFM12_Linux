@@ -3,17 +3,16 @@
 #include <linux/init.h>
 #include <linux/gpio.h>
 #include <linux/spi/spi.h>
-
+#include "RFM12_config.h"
 
 MODULE_AUTHOR("Schoenlieb");
 MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
 MODULE_LICENSE("GPL");
 
-
 static struct gpio leds[] = {
-    { 15, GPIOF_OUT_INIT_HIGH, "ON" },
-    { 9, GPIOF_OUT_INIT_HIGH, "RX" },
-    { 14, GPIOF_OUT_INIT_HIGH, "TX" },
+    { ON_LED, GPIOF_OUT_INIT_HIGH, "ON" },
+    { RX_LED, GPIOF_OUT_INIT_HIGH, "RX" },
+    { TX_LED, GPIOF_OUT_INIT_HIGH, "TX" },
 };
 
 static int __init RFM_init(void)
@@ -34,6 +33,7 @@ static int __init RFM_init(void)
       
     return ret;
 }
+
 static void __exit RFM_exit(void)
 {
     int i; 
