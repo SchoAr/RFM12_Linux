@@ -53,8 +53,7 @@ static irqreturn_t input_ISR (int irq, void *data)
     return IRQ_HANDLED;
 }
 
-static int __init RFM_init(void)
-{
+static int init_Gpio(void){
     int ret = 0;
     int i; 
     /*Request LEDs*/
@@ -98,6 +97,17 @@ static int __init RFM_init(void)
       gpio_free_array(leds, ARRAY_SIZE(leds));
     
     return ret;
+}
+
+static int __init RFM_init(void)
+{
+    int ret; 
+    
+    ret = init_Gpio();
+    if (ret!= 0){
+      return ret; 
+    }
+    return 0;
 }
 
 static void __exit RFM_exit(void)
