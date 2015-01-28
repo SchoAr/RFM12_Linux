@@ -48,11 +48,11 @@ static irqreturn_t input_ISR (int irq, void *data)
   
   if(irq == input_irqs[0]) {
       if(ledstatus){
-//	gpio_set_value(leds[0].gpio,0);
+	gpio_set_value(leds[1].gpio,0);
 	ledstatus = 0;
       }
       else{
-//	gpio_set_value(leds[0].gpio,1);
+	gpio_set_value(leds[1].gpio,1);
 	ledstatus = 1;
       }	  
     }
@@ -68,11 +68,11 @@ static int init_Gpio(void){
       printk(KERN_ERR "Unable to request gpio for LEDs  %d",ret);
       return ret;
     }
-    /*Turn LEDs on */
+    /* Turn Off all LEDs*/
     for(i = 0; i < ARRAY_SIZE(leds); i++){
-    	gpio_set_value(leds[i].gpio,1);
+	gpio_set_value(leds[i].gpio,0);
     }
-    ledstatus = 1;
+   
     /*Request IRQ*/
     ret = gpio_request_array(input, ARRAY_SIZE(input));
     
@@ -95,6 +95,14 @@ static int init_Gpio(void){
       printk(KERN_ERR "Unable to request IRQ: %d\n", ret);
       goto fail2;
     }
+/*
+ **************DEBUG ledstatus 
+ */
+    ledstatus = 1;
+/*Only when On LED is avaiable it can be set to indicate the driver is working*/ 
+#ifdef ON_LED_ENABLE
+    gpio_set_value(leds[0].gpio,1);
+#endif     
     return 0;
     
     fail2:
