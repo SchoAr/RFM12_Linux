@@ -17,9 +17,15 @@ int ledstatus = 0;
  * Define for The LEDs
  */
 static struct gpio leds[] = {
+#ifdef ON_LED_ENABLE
     { ON_LED, GPIOF_OUT_INIT_HIGH, "ON" },
+#endif
+#ifdef RX_LED_ENABLE
     { RX_LED, GPIOF_OUT_INIT_HIGH, "RX" },
+#endif
+#ifdef TX_LED_ENABLE
     { TX_LED, GPIOF_OUT_INIT_HIGH, "TX" },
+#endif  
 };
 
 /*
@@ -42,11 +48,11 @@ static irqreturn_t input_ISR (int irq, void *data)
   
   if(irq == input_irqs[0]) {
       if(ledstatus){
-	gpio_set_value(leds[0].gpio,0);
+//	gpio_set_value(leds[0].gpio,0);
 	ledstatus = 0;
       }
       else{
-	gpio_set_value(leds[0].gpio,1);
+//	gpio_set_value(leds[0].gpio,1);
 	ledstatus = 1;
       }	  
     }

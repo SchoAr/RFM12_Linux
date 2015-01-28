@@ -11,6 +11,11 @@
 
 #define DEBUG 1
 /*********************************/
+// Use Defines for enabling and disabling the LEDs
+#define ON_LED_ENABLE 1
+#define RX_LED_ENABLE 1
+#define TX_LED_ENABLE 1
+/*********************************/
 #define IRQ_PIN 0 	//MIO0
 #define RX_LED 9
 #define TX_LED 14
