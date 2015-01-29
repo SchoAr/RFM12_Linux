@@ -4,6 +4,9 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h> 
 #include <linux/spi/spi.h>
+#include <linux/miscdevice.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
 #include "RFM12_config.h"
 
 MODULE_AUTHOR("Schoenlieb");
@@ -28,15 +31,11 @@ static struct gpio leds[] = {
 #endif  
 };
 
-/*
- * Define for the Inputs	 
- */ 
+/*Define for the Inputs*/ 
 static struct gpio input[] = {
     { INPUTPIN, GPIOF_IN, "INPUT" },
 };
-/*
- *  Defines for the Interrupt 
- */
+/* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
 
 
@@ -112,17 +111,60 @@ static int init_Gpio(void){
     
     return ret;
 }
+/***************File Operations************************/
+static const char *id = "72ca33bd9437";
+
+static ssize_t read(struct file *file, char __user *buf, size_t count,
+		    loff_t *ppos)
+{
+	printk(KERN_INFO "Read is called !\n");
+	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
+}
+
+static ssize_t write(struct file *file, const char __user *buf,
+					 size_t count, loff_t *ppos)
+{
+	printk(KERN_INFO "write is called !\n");
+	char temp[32] = {};
+
+	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
+	return memcmp(temp, id, strlen(id)) ? -EINVAL : count;
+}
+/* Struct with the File Operations*/
+static const struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.read = read,
+	.write = write,
+};
+
+static struct miscdevice eud_dev = {
+	.minor          = MISC_DYNAMIC_MINOR,
+	.name           = "RFM12_RW",
+	.fops           = &fops
+};
 
 static int __init RFM_init(void)
 {
     int ret; 
-    
+    /* Register GPIO and Interrupt)*/
     ret = init_Gpio();
     if (ret!= 0){
       return ret; 
     }
+    /*Initialize the File Operations*/
+    ret = misc_register(&eud_dev);
+    if (ret!= 0){
+      // free irqs
+      free_irq(input_irqs[0], NULL);
+      /* unregister */
+      gpio_free_array(leds,ARRAY_SIZE(leds));
+      gpio_free_array(input, ARRAY_SIZE(input));
+      return ret; 
+    }
+    
     return 0;
 }
+
 
 static void __exit RFM_exit(void)
 {
