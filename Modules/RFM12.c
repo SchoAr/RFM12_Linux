@@ -182,6 +182,8 @@ static void __exit RFM_exit(void)
     for(i = 0; i < ARRAY_SIZE(leds); i++){
 	gpio_set_value(leds[i].gpio,0);
     } 
+    //free file structure
+    misc_deregister(&eud_dev);
     // free irqs
     free_irq(input_irqs[0], NULL);
     /* unregister */
