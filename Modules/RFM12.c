@@ -112,7 +112,7 @@ static int init_Gpio(void){
     return ret;
 }
 /***************File Operations************************/
-static const char *id = "72ca33bd9437";
+static const char *id = "Hello World";
 
 static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
@@ -124,11 +124,20 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 static ssize_t write(struct file *file, const char __user *buf,
 					 size_t count, loff_t *ppos)
 {
+//	int ret;
 	printk(KERN_INFO "write is called !\n");
-	char temp[32] = {};
+//	char temp[32] = {};
 
-	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
-	return memcmp(temp, id, strlen(id)) ? -EINVAL : count;
+	printk(KERN_INFO "Message = %s",buf);
+	
+/*	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
+	ret =  memcmp(temp, id, strlen(id)) ? -EINVAL : count;
+	if(ret){
+	    return ret; 
+	}
+	printk(KERN_INFO "write value =  %s !\n",temp);
+*/
+	return 0;
 }
 /* Struct with the File Operations*/
 static const struct file_operations fops = {
