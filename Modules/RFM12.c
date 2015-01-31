@@ -174,7 +174,6 @@ static int __init RFM_init(void)
     return 0;
 }
 
-
 static void __exit RFM_exit(void)
 {
     int i; 

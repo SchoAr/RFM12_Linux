@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -17,7 +18,17 @@ int main(voi){
   }
   
   write(fp,"Hallo", 5);
-  close(fp);
+  int ret; 
+  ret = read(fp,&str,10);
+  printf("Return form Read = %d\n",ret);
+  printf("length of Read = %d\n",strlen(str)); 
+  printf("Read from Module = \n", str);
+  int i;
+  for(i = 0; i <= strlen(str) ; i++){
+     printf("%c",str[i]);
+  }
+   printf("\n");
   
+  close(fp);
   return 0;
 }
