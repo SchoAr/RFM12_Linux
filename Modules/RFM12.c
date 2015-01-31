@@ -124,19 +124,12 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 static ssize_t write(struct file *file, const char __user *buf,
 					 size_t count, loff_t *ppos)
 {
-//	int ret;
-	printk(KERN_INFO "write is called !\n");
-//	char temp[32] = {};
-
-	printk(KERN_INFO "Message = %s",buf);
+	char temp[32] = {};
 	
-/*	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
-	ret =  memcmp(temp, id, strlen(id)) ? -EINVAL : count;
-	if(ret){
-	    return ret; 
-	}
-	printk(KERN_INFO "write value =  %s !\n",temp);
-*/
+	printk(KERN_INFO "write is called !\n");
+	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
+	printk(KERN_INFO "write value =  %s \n",temp);
+	
 	return 0;
 }
 /* Struct with the File Operations*/
