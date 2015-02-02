@@ -145,9 +145,46 @@ static struct miscdevice eud_dev = {
 	.fops           = &fops
 };
 
+static struct spi_device *spi_device;
+/* MODULE PARAMETERS */
+static uint spi_bus = 0;
+static uint spi_cs = 0;
+static uint spi_speed_hz = 1500000;
+static uint spi_bits_per_word = 8;
+
+
 static int __init RFM_init(void)
 {
-    int ret; 
+ /*****************************************************************/ 
+      struct spi_board_info spi_device_info = {
+        .modalias = "module name",
+        .max_speed_hz = spi_speed_hz,
+        .bus_num = spi_bus,
+        .chip_select = spi_cs,
+        .mode = 0,
+    };
+
+    struct spi_master *master;
+    int ret;
+
+    // get the master device, given SPI the bus number
+    master = spi_busnum_to_master( spi_device_info.bus_num );
+    if( !master ){
+        printk(KERN_ERR "Unable to Request master device \n");
+        return -ENODEV;
+    }
+//     spi_device->bits_per_word = spi_bits_per_word;
+
+/*    ret = spi_setup( spi_device );
+    if( ret ){
+	printk(KERN_ERR "ERROR in spi setup\n");
+        spi_unregister_device( spi_device );
+    }
+*/
+    printk(KERN_INFO "SPI Setup Succesful \n");
+	
+/*************************************************************/    
+  
     /* Register GPIO and Interrupt)*/
     ret = init_Gpio();
     if (ret!= 0){
@@ -170,7 +207,9 @@ static int __init RFM_init(void)
 static void __exit RFM_exit(void)
 {
     int i; 
-    
+    //free spi
+     spi_unregister_device( spi_device);
+
     for(i = 0; i < ARRAY_SIZE(leds); i++){
 	gpio_set_value(leds[i].gpio,0);
     } 
