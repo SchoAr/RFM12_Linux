@@ -145,45 +145,59 @@ static struct miscdevice eud_dev = {
 	.fops           = &fops
 };
 
-static struct spi_device *spi_device;
-/* MODULE PARAMETERS */
-static uint spi_bus = 0;
-static uint spi_cs = 0;
-static uint spi_speed_hz = 1500000;
-static uint spi_bits_per_word = 8;
+#define SPI_BUS 0
+#define SPI_BUS_CS0 0
+#define SPI_BUS_SPEED 1000000
 
+    struct spi_master *spi_master;
+    struct spi_device *spi_device;
+
+static int RFM12_probe(struct spi_device *spi_devicef)
+{
+    spi_device = spi_devicef;
+    return 0;
+}
+ static int RFM12_remove(struct spi_device *spi_devicef)
+{
+    spi_device = NULL;
+    return 0;
+}
+
+    static struct spi_driver RFM12_driver = {
+    .driver = {
+      .name = "RFM12_spi",
+      .owner = THIS_MODULE,
+      },
+      .probe = RFM12_probe,
+//      .remove = __devexit_p(RFM12_remove),
+};
 
 static int __init RFM_init(void)
 {
- /*****************************************************************/ 
-      struct spi_board_info spi_device_info = {
-        .modalias = "module name",
-        .max_speed_hz = spi_speed_hz,
-        .bus_num = spi_bus,
-        .chip_select = spi_cs,
-        .mode = 0,
-    };
-
-    struct spi_master *master;
     int ret;
-
-    // get the master device, given SPI the bus number
-    master = spi_busnum_to_master( spi_device_info.bus_num );
-    if( !master ){
-        printk(KERN_ERR "Unable to Request master device \n");
-        return -ENODEV;
+       
+    ret = spi_register_driver(&RFM12_driver);
+    
+    if (ret < 0) {
+	printk(KERN_ALERT "spi_register_driver() failed %d\n", ret);
+	return ret;
     }
-//     spi_device->bits_per_word = spi_bits_per_word;
-
-/*    ret = spi_setup( spi_device );
-    if( ret ){
-	printk(KERN_ERR "ERROR in spi setup\n");
-        spi_unregister_device( spi_device );
+    
+    struct device *pdev;
+    
+    int status = 0;
+    spi_master = spi_busnum_to_master(SPI_BUS);
+    if (!spi_master) {
+      printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n",SPI_BUS);
+      return -1;
     }
-*/
-    printk(KERN_INFO "SPI Setup Succesful \n");
-	
-/*************************************************************/    
+    spi_device = spi_alloc_device(spi_master);
+    if (!spi_device) {
+      put_device(&spi_master->dev);
+      printk(KERN_ALERT "spi_alloc_device() failed\n");
+      return -1;
+    }
+    spi_device->chip_select = SPI_BUS_CS0;
   
     /* Register GPIO and Interrupt)*/
     ret = init_Gpio();
@@ -208,7 +222,8 @@ static void __exit RFM_exit(void)
 {
     int i; 
     //free spi
-     spi_unregister_device( spi_device);
+    spi_unregister_device(spi_device);
+    spi_unregister_driver(&RFM12_driver);
 
     for(i = 0; i < ARRAY_SIZE(leds); i++){
 	gpio_set_value(leds[i].gpio,0);
