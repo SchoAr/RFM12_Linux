@@ -145,12 +145,16 @@ static struct miscdevice eud_dev = {
 	.fops           = &fops
 };
 
-#define SPI_BUS 0
+#define SPI_BUS 32766
 #define SPI_BUS_CS0 0
 #define SPI_BUS_SPEED 1000000
 
     struct spi_master *spi_master;
     struct spi_device *spi_device;
+    struct spi_device *spi_device;
+    struct spi_message msg;
+
+int i;
 
 static int RFM12_probe(struct spi_device *spi_devicef)
 {
@@ -169,23 +173,23 @@ static int RFM12_probe(struct spi_device *spi_devicef)
       .owner = THIS_MODULE,
       },
       .probe = RFM12_probe,
-//      .remove = __devexit_p(RFM12_remove),
+      .remove = RFM12_remove,
 };
 
 static int __init RFM_init(void)
 {
-    int ret;
+    int status = 0;
+    char buff[64];
+     struct device *pdev;
+//    char tx_buff[26];
        
-    ret = spi_register_driver(&RFM12_driver);
+    status = spi_register_driver(&RFM12_driver);
     
-    if (ret < 0) {
-	printk(KERN_ALERT "spi_register_driver() failed %d\n", ret);
-	return ret;
+    if (status < 0) {
+	printk(KERN_ALERT "spi_register_driver() failed %d\n", status);
+	return status;
     }
     
-    struct device *pdev;
-    
-    int status = 0;
     spi_master = spi_busnum_to_master(SPI_BUS);
     if (!spi_master) {
       printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n",SPI_BUS);
@@ -198,23 +202,91 @@ static int __init RFM_init(void)
       return -1;
     }
     spi_device->chip_select = SPI_BUS_CS0;
-  
+    
+    
+    
+    /* Check whether this SPI bus.cs is already claimed */
+      snprintf(buff, sizeof(buff), "%s.%u",
+	      dev_name(&spi_device->master->dev),
+	      spi_device->chip_select);
+      
+      pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
+      if (pdev) {
+	    /* We are not going to use this spi_device, so free it */
+	  spi_dev_put(spi_device);
+	  /*
+	  * There is already a device configured for this bus.cs
+	  * It is okay if it us, otherwise complain and fail.
+	  */
+	  if (pdev->driver && pdev->driver->name &&
+	  strcmp("RFM12_spi", pdev->driver->name)) {
+	      printk(KERN_ALERT
+	      "Driver [%s] already registered for %s\n",
+	      pdev->driver->name, buff);
+	      status = -1;
+	  } 
+	return status;
+     }
+    
+    
+    
+    
+    spi_device->max_speed_hz = SPI_BUS_SPEED;
+    spi_device->mode = SPI_MODE_0;
+    spi_device->bits_per_word = 8;
+    spi_device->irq = -1;
+    spi_device->controller_state = NULL;
+    spi_device->controller_data = NULL;
+    strlcpy(spi_device->modalias, "RFM12_SPI", SPI_NAME_SIZE);
+    
+    status = spi_add_device(spi_device);
+    if (status < 0) {
+	spi_dev_put(spi_device);
+	printk(KERN_ALERT "spi_add_device() failed: %d\n",status);
+    } 
+    
+    
+/*    spi_message_init(&msg);
+    
+    tx_buff[0] = i++;
+    tx_buff[1] = i++;
+    tx_buff[2] = i++;
+    tx_buff[3] = i++;
+    
+    struct spi_transfer transfer;
+    
+    transfer.cs_change = 1;   
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = NULL;
+    transfer.len = 4;
+    
+    spi_message_add_tail(&transfer,&msg); 
+    
+    spi_master->transfer(&spi_device, &msg);
+    
+    if(status){
+      printk(KERN_ALERT "SPI Transfer Failed: %d\n",status);
+      return status;
+    }
+    
+    
+ */ 
     /* Register GPIO and Interrupt)*/
-    ret = init_Gpio();
-    if (ret!= 0){
-      return ret; 
+    status = init_Gpio();
+    if (status!= 0){
+      return status; 
     }
     /*Initialize the File Operations*/
-    ret = misc_register(&eud_dev);
-    if (ret!= 0){
+    status = misc_register(&eud_dev);
+    if (status!= 0){
       // free irqs
       free_irq(input_irqs[0], NULL);
       /* unregister */
       gpio_free_array(leds,ARRAY_SIZE(leds));
       gpio_free_array(input, ARRAY_SIZE(input));
-      return ret; 
+      return status; 
     }
-    
+    printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
 }
 
@@ -235,6 +307,7 @@ static void __exit RFM_exit(void)
     /* unregister */
     gpio_free_array(leds,ARRAY_SIZE(leds));
     gpio_free_array(input, ARRAY_SIZE(input));
+    printk(KERN_INFO "RFM12 Successfully unloaded!\n");
 }
 
 module_init(RFM_init);
