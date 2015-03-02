@@ -1,0 +1,57 @@
+source: http://svenand.blogdrive.com/archive/201.html#.VOs8dvmG8f0
+
+Create uboot image
+------------------
+
+Export the variable as when we were compiling the kernel
+
+    ~$ export CROSS_COMPILE=arm-linux-gnueabihf-
+
+Modify the files as in this next patch to make it AMP capable:
+
+    ./u-boot.patch
+
+Create configuartion for the Microzed board
+
+    ~$ make zynq_microzed_config
+
+Compile
+    
+    ~$ make -j3
+
+The file "u-boot" is needed to create boot.bin in the next step. 
+
+Important: Rename it to "u-boot.elf"
+
+Create fsbl
+-----------
+
+1)	Import the hardware description
+
+2)	Create a BSP
+		Select the next libraries from the BSP settings dialogue:
+			xilfs
+			xilrsa
+			
+3)	Create a new application project
+		From the Templates dialogue, select Zynq FSBL
+
+4)	Build first stage bootloader.
+		You should get something like fsbl.elf
+
+Create the boot.img
+-------------------
+		
+Run the "Create Zynq boot image" tool from the SDK
+
+With "Add" button add the generated file in the following order:
+    1. fsbl.elf: Set "partition type" to : "bootloader"
+	2. fpga bit stream file: Set "partition type" to : "datafile"
+    3. u-boot.elf: Set "partition type" to : "datafile"
+
+Note!: Order is important so make add this file first.  
+
+Click "Create Image"
+    When finished the file boot.bin has been created in the directory of the BIF file
+
+Copy the file boot.bin in you SD card

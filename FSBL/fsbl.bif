@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+	[bootloader]C:\fh\MIC\fsbl\Debug\fsbl.elf
+	C:\Users\armetallica\Desktop\FSBL\system_wrapper.bit
+	C:\Users\armetallica\Desktop\FSBL\u-boot.elf
+}
