@@ -20,6 +20,8 @@ clean:
 install:        
 	scp *.ko root@$(TARGET):$(TARGET_DIR)
 
+check: 
+	$(MAKE) ARCH=arm CROSS_COMPILE=$(CC) -C $(KERNELDIR) M=$(PWD) modules -Wextra -Werror
 endif
 
 
