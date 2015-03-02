@@ -146,11 +146,10 @@ static struct miscdevice eud_dev = {
 };
 
 #define SPI_BUS 32766
-#define SPI_BUS_CS0 0
-#define SPI_BUS_SPEED 1000000
+#define SPI_BUS_CS0 0	
+#define SPI_BUS_SPEED 50000
 
     struct spi_master *spi_master;
-    struct spi_device *spi_device;
     struct spi_device *spi_device;
     struct spi_message msg;
 
@@ -181,9 +180,16 @@ static int __init RFM_init(void)
     int status = 0;
     char buff[64];
      struct device *pdev;
-//    char tx_buff[26];
+    char tx_buff[26];
+    struct spi_transfer transfer = {
+        .tx_buf         = tx_buff,
+	.rx_buf 	= 0,
+        .len            = 4,
+    };
        
     status = spi_register_driver(&RFM12_driver);
+    
+    printk(KERN_INFO "Register driver Successfully Initialized !\n");
     
     if (status < 0) {
 	printk(KERN_ALERT "spi_register_driver() failed %d\n", status);
@@ -195,41 +201,43 @@ static int __init RFM_init(void)
       printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n",SPI_BUS);
       return -1;
     }
+    printk(KERN_INFO "spi busnum  Successfully Initialized !\n");
     spi_device = spi_alloc_device(spi_master);
     if (!spi_device) {
       put_device(&spi_master->dev);
       printk(KERN_ALERT "spi_alloc_device() failed\n");
       return -1;
     }
-    spi_device->chip_select = SPI_BUS_CS0;
     
-    
+    spi_device->chip_select = SPI_BUS_CS0; 
+    printk(KERN_INFO "SPI CS set !\n");
     
     /* Check whether this SPI bus.cs is already claimed */
-      snprintf(buff, sizeof(buff), "%s.%u",
+     snprintf(buff, sizeof(buff), "%s.%u",
 	      dev_name(&spi_device->master->dev),
 	      spi_device->chip_select);
       
-      pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
-      if (pdev) {
+     pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
+     printk(KERN_INFO "Spi bus find device by name  !\n");
+/*     if (pdev) {
 	    /* We are not going to use this spi_device, so free it */
-	  spi_dev_put(spi_device);
+//	  printk(KERN_INFO "SPI Device already exists !\n");
+//	    spi_dev_put(spi_device);
 	  /*
 	  * There is already a device configured for this bus.cs
 	  * It is okay if it us, otherwise complain and fail.
 	  */
-	  if (pdev->driver && pdev->driver->name &&
+/*	  if (pdev->driver && pdev->driver->name &&
 	  strcmp("RFM12_spi", pdev->driver->name)) {
 	      printk(KERN_ALERT
 	      "Driver [%s] already registered for %s\n",
 	      pdev->driver->name, buff);
 	      status = -1;
 	  } 
+	printk(KERN_INFO "Returning !\n");  
 	return status;
-     }
-    
-    
-    
+     }*/   
+    printk(KERN_INFO "spi driver checked if afauable !\n");
     
     spi_device->max_speed_hz = SPI_BUS_SPEED;
     spi_device->mode = SPI_MODE_0;
@@ -237,40 +245,38 @@ static int __init RFM_init(void)
     spi_device->irq = -1;
     spi_device->controller_state = NULL;
     spi_device->controller_data = NULL;
+    
     strlcpy(spi_device->modalias, "RFM12_SPI", SPI_NAME_SIZE);
+    
+    printk(KERN_INFO "SPI READY FOR SEND !\n");
     
     status = spi_add_device(spi_device);
     if (status < 0) {
 	spi_dev_put(spi_device);
 	printk(KERN_ALERT "spi_add_device() failed: %d\n",status);
     } 
-    
-    
-/*    spi_message_init(&msg);
+    printk(KERN_INFO "SPI DEVICE added !\n");
     
     tx_buff[0] = i++;
     tx_buff[1] = i++;
     tx_buff[2] = i++;
     tx_buff[3] = i++;
     
-    struct spi_transfer transfer;
-    
-    transfer.cs_change = 1;   
-    transfer.tx_buf = tx_buff;
-    transfer.rx_buf = NULL;
-    transfer.len = 4;
+    spi_message_init(&msg);
     
     spi_message_add_tail(&transfer,&msg); 
-    
-    spi_master->transfer(&spi_device, &msg);
+    printk(KERN_INFO "SPI MESSAGE ADDED TAIL !\n");
+    status = spi_sync(spi_device, &msg);
     
     if(status){
       printk(KERN_ALERT "SPI Transfer Failed: %d\n",status);
+      spi_unregister_device(spi_device);
+      spi_unregister_driver(&RFM12_driver);
       return status;
     }
-    
-    
- */ 
+    printk(KERN_INFO "SPI Transfer Successfully !\n");
+/**************************************************************/    
+
     /* Register GPIO and Interrupt)*/
     status = init_Gpio();
     if (status!= 0){
