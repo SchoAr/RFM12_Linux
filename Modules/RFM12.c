@@ -152,37 +152,27 @@ static int init_Spi(void){
     int status; 
     int i; 
     status = spi_register_driver(&RFM12_driver);
-    
-    printk(KERN_INFO "Register driver Successfully Initialized !\n");
-    
     if (status < 0) {
 	printk(KERN_ALERT "spi_register_driver() failed %d\n", status);
 	return status;
     }
-    
-    spi_master = spi_busnum_to_master(SPI_BUS);
+     spi_master = spi_busnum_to_master(SPI_BUS);
     if (!spi_master) {
       printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n",SPI_BUS);
       return -1;
     }
-    printk(KERN_INFO "spi busnum  Successfully Initialized !\n");
     spi_device = spi_alloc_device(spi_master);
     if (!spi_device) {
       put_device(&spi_master->dev);
       printk(KERN_ALERT "spi_alloc_device() failed\n");
       return -1;
-    }
-    
+    } 
     spi_device->chip_select = SPI_BUS_CS0; 
-    printk(KERN_INFO "SPI CS set !\n");
-    
     /* Check whether this SPI bus.cs is already claimed */
      snprintf(buff, sizeof(buff), "%s.%u",
 	      dev_name(&spi_device->master->dev),
-	      spi_device->chip_select);
-      
+	      spi_device->chip_select);     
      pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
-     printk(KERN_INFO "Spi bus find device by name  !\n");
      if (pdev) {
 	    /* We are not going to use this spi_device, so free it */
 	  printk(KERN_INFO "SPI Device already exists !\n");
@@ -201,7 +191,6 @@ static int init_Spi(void){
 	printk(KERN_INFO "Returning !\n");  
 	return status;
      }   
-    printk(KERN_INFO "spi driver checked if afauable !\n");
     
     spi_device->max_speed_hz = SPI_BUS_SPEED;
     spi_device->mode = SPI_MODE_0;
@@ -212,14 +201,11 @@ static int init_Spi(void){
     
     strlcpy(spi_device->modalias, "RFM12_SPI", SPI_NAME_SIZE);
     
-    printk(KERN_INFO "SPI READY FOR SEND !\n");
-    
     status = spi_add_device(spi_device);
     if (status < 0) {
 	spi_dev_put(spi_device);
 	printk(KERN_ALERT "spi_add_device() failed: %d\n",status);
     } 
-    printk(KERN_INFO "SPI DEVICE added !\n");
     
     tx_buff[2] = i++;
     tx_buff[0] = i++;
@@ -229,7 +215,6 @@ static int init_Spi(void){
     spi_message_init(&msg);
     
     spi_message_add_tail(&transfer,&msg); 
-    printk(KERN_INFO "SPI MESSAGE ADDED TAIL !\n");
     status = spi_sync(spi_device, &msg);
     
     if(status){
@@ -238,7 +223,6 @@ static int init_Spi(void){
       spi_unregister_driver(&RFM12_driver);
       return status;
     }
-    printk(KERN_INFO "SPI Transfer Successfully !\n");   
     return status;
 }
     
