@@ -225,7 +225,6 @@ static int init_Spi(void){
 u16 xfer(u16 cmd) {
     int status;
     unsigned long flags;
-    u16 ret;
     
     spi_message_init(&msg);
     msg.complete = spi_completion_handler;
@@ -246,13 +245,31 @@ u16 xfer(u16 cmd) {
     }
     spin_unlock_irqrestore(&spi_lock, flags);
 
-    ret =  (rx_buff[0]<<8) | rx_buff[1];
-    printk(KERN_INFO "returning spi send %d!\n",ret);
-    return ret;
+    return  (rx_buff[0]<<8) | rx_buff[1];
 }
 
 u8 byte(u8 cmd) {
-	
+    int status;
+    unsigned long flags;
+    
+    spi_message_init(&msg);
+    msg.complete = spi_completion_handler;
+    msg.context = NULL;
+   
+    tx_buff[0] = cmd ;
+    
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = rx_buff;
+    transfer.len = 1;
+    
+    spi_message_add_tail(&transfer, &msg);
+    
+    status = spi_async(spi_device, &msg);
+    if (status == 0){
+	busy = 1; 
+    }
+    spin_unlock_irqrestore(&spi_lock, flags);
+    return rx_buff[0];
 }
 
 u16 writeCmd(u16 cmd) {
@@ -316,7 +333,8 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 {
 	printk(KERN_INFO "Read is called !\n");
 	
-	xfer(0xFF00);
+	//xfer(0xFF00);
+	byte(0xF0);
 	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
