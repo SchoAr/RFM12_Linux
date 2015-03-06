@@ -52,8 +52,7 @@ static irqreturn_t input_ISR (int irq, void *data)
       else{
 	gpio_set_value(leds[1].gpio,1);
 	ledstatus = 1;
-      }	 
-      	//queue_spi_write();
+      }	
     }
     return IRQ_HANDLED;
 }
@@ -222,48 +221,19 @@ static int init_Spi(void){
     spi_sync(spi_device, &msg);
     return status;
 }
-    
-/***************File Operations************************/
-static const char *id = "Hello World";
+/*************Send Receive SPi***********/
+u16 xfer(u16 cmd) {
 
-static ssize_t read(struct file *file, char __user *buf, size_t count,
-		    loff_t *ppos)
-{
-	printk(KERN_INFO "Read is called !\n");
-	
-	queue_spi_write();
-	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
-static ssize_t write(struct file *file, const char __user *buf,
-					 size_t count, loff_t *ppos)
-{
-	char temp[32] = {};
+u8 byte(u8 cmd) {
 	
-	printk(KERN_INFO "write is called !\n");
-	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
-	printk(KERN_INFO "write value =  %s \n",temp);
-	
-	return 0;
 }
-/* Struct with the File Operations*/
-static const struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.read = read,
-	.write = write,
-};
 
-static struct miscdevice eud_dev = {
-	.minor          = MISC_DYNAMIC_MINOR,
-	.name           = "RFM12_RW",
-	.fops           = &fops
-};
+u16 writeCmd(u16 cmd) {
 
-static void spi_completion_handler(void *arg)
-{        
-    busy = 0;
-    printk(KERN_INFO "spi complete handler called !\n");
-} 
+}
+
 
 static int queue_spi_write(void)
 {
@@ -315,7 +285,56 @@ static int queue_spi_write(void)
     printk(KERN_INFO "returning spi send !\n");
     return status;
 } 
+    
+/***************File Operations************************/
+static const char *id = "Hello World";
 
+static ssize_t read(struct file *file, char __user *buf, size_t count,
+		    loff_t *ppos)
+{
+	printk(KERN_INFO "Read is called !\n");
+	
+	queue_spi_write();
+	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
+}
+
+static ssize_t write(struct file *file, const char __user *buf,
+					 size_t count, loff_t *ppos)
+{
+	char temp[32] = {};
+	printk(KERN_INFO "write is called !\n");
+	
+
+	    queue_spi_write();
+
+	printk(KERN_INFO "write is called !\n");
+	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
+	printk(KERN_INFO "write value =  %s \n",temp);	
+	return 0;
+}
+/* Struct with the File Operations*/
+static const struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.read = read,
+	.write = write,
+};
+
+static struct miscdevice eud_dev = {
+	.minor          = MISC_DYNAMIC_MINOR,
+	.name           = "RFM12_RW",
+	.fops           = &fops
+};
+
+static void spi_completion_handler(void *arg)
+{        
+    busy = 0;
+    printk(KERN_INFO "spi complete handler called !\n");
+} 
+/***********RFM12 Operations**********/
+
+
+
+/***********Init and Deinit************/
 static int __init RFM_init(void)
 {
     int status = 0;
