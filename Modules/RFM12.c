@@ -136,7 +136,8 @@ static struct spi_driver RFM12_driver = {
 
 char buff[64];
 struct device *pdev;
-char tx_buff[26];
+char tx_buff[3];
+char rx_buff[3];
 int busy;
 int i;
 
@@ -145,6 +146,12 @@ struct spi_transfer transfer = {
 	.rx_buf 	= 0,
         .len            = 4,
     };
+
+static void spi_completion_handler(void *arg)
+{        
+    busy = 0;
+    printk(KERN_INFO "spi complete handler called !\n");
+} 
 
 static int init_Spi(void){
   
@@ -208,9 +215,6 @@ static int init_Spi(void){
     i++;
     tx_buff[0] = i++;
     tx_buff[1] = i++;
-    tx_buff[2] = i++;
-    tx_buff[3] = i++;
-
     spi_message_init(&msg);
 	
     spi_message_add_tail(&transfer,&msg); 
@@ -219,7 +223,32 @@ static int init_Spi(void){
 }
 /*************Send Receive SPi***********/
 u16 xfer(u16 cmd) {
+    int status;
+    unsigned long flags;
+    u16 ret;
+    
+    spi_message_init(&msg);
+    msg.complete = spi_completion_handler;
+    msg.context = NULL;
+   
+    tx_buff[0] = cmd >> 8;
+    tx_buff[1] = cmd & 0xFF;
+    
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = rx_buff;
+    transfer.len = 2;
+    
+    spi_message_add_tail(&transfer, &msg);
+    
+    status = spi_async(spi_device, &msg);
+    if (status == 0){
+	busy = 1; 
+    }
+    spin_unlock_irqrestore(&spi_lock, flags);
 
+    ret =  (rx_buff[0]<<8) | rx_buff[1];
+    printk(KERN_INFO "returning spi send %d!\n",ret);
+    return ret;
 }
 
 u8 byte(u8 cmd) {
@@ -245,13 +274,10 @@ static int queue_spi_write(void)
     /* write some toggling bit patterns, doesn't really matter */
      tx_buff[0] = i++;
     tx_buff[1] = i++;
-    tx_buff[2] = i++;
-    tx_buff[3] = i++;
-
     
     transfer.tx_buf = tx_buff;
     transfer.rx_buf = NULL;
-    transfer.len = 4;
+    transfer.len = 2;
     
     spi_message_add_tail(&transfer, &msg);
     
@@ -290,7 +316,7 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 {
 	printk(KERN_INFO "Read is called !\n");
 	
-	queue_spi_write();
+	xfer(0xFF00);
 	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
@@ -321,11 +347,6 @@ static struct miscdevice eud_dev = {
 	.fops           = &fops
 };
 
-static void spi_completion_handler(void *arg)
-{        
-    busy = 0;
-    printk(KERN_INFO "spi complete handler called !\n");
-} 
 /***********RFM12 Operations**********/
 
 
