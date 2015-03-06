@@ -273,7 +273,29 @@ u8 byte(u8 cmd) {
 }
 
 u16 writeCmd(u16 cmd) {
+    int status;
+    unsigned long flags;
+    
+    spi_message_init(&msg);
+    msg.complete = spi_completion_handler;
+    msg.context = NULL;
+   
+    tx_buff[0] = cmd >> 8;
+    tx_buff[1] = cmd & 0xFF;
+    
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = rx_buff;
+    transfer.len = 2;
+    
+    spi_message_add_tail(&transfer, &msg);
+    
+    status = spi_async(spi_device, &msg);
+    if (status == 0){
+	busy = 1; 
+    }
+    spin_unlock_irqrestore(&spi_lock, flags);
 
+    return  rx_buff[0] + rx_buff[1];
 }
 
 
@@ -334,7 +356,8 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 	printk(KERN_INFO "Read is called !\n");
 	
 	//xfer(0xFF00);
-	byte(0xF0);
+	//byte(0xF0);
+	writeCmd(0xFF00);
 	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
@@ -345,7 +368,7 @@ static ssize_t write(struct file *file, const char __user *buf,
 	printk(KERN_INFO "write is called !\n");
 	
 
-	    queue_spi_write();
+	queue_spi_write();
 
 	printk(KERN_INFO "write is called !\n");
 	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
