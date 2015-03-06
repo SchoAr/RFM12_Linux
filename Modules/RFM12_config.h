@@ -22,6 +22,10 @@
 #define ON_LED 15
 #define INPUTPIN 51
 /********************************/
+#define SPI_BUS 32766
+#define SPI_BUS_CS0 0	
+#define SPI_BUS_SPEED 200000
+/********************************/
 #define RF12_433MHZ     1
 #define RF12_868MHZ     2
 #define RF12_915MHZ     3

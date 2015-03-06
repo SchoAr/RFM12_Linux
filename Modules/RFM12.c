@@ -109,10 +109,6 @@ static int init_Gpio(void){
     return ret;
 }
 /***************SPI Operations************************/
-#define SPI_BUS 32766
-#define SPI_BUS_CS0 0	
-#define SPI_BUS_SPEED 200000
-
 struct spi_master *spi_master;
 struct spi_device *spi_device;
 struct spi_message msg;
