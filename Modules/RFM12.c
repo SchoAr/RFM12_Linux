@@ -15,7 +15,7 @@ MODULE_LICENSE("GPL");
 /********************/
 int ledstatus = 0;
 /********************/
-
+static int queue_spi_write(void);
 /*
  * Define for The LEDs
  */
@@ -38,7 +38,6 @@ static struct gpio input[] = {
 /* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
 
-
 static irqreturn_t input_ISR (int irq, void *data)
 {
 #ifdef DEBUG
@@ -53,7 +52,8 @@ static irqreturn_t input_ISR (int irq, void *data)
       else{
 	gpio_set_value(leds[1].gpio,1);
 	ledstatus = 1;
-      }	  
+      }	 
+      	//queue_spi_write();
     }
     return IRQ_HANDLED;
 }
@@ -117,6 +117,7 @@ static int init_Gpio(void){
 struct spi_master *spi_master;
 struct spi_device *spi_device;
 struct spi_message msg;
+spinlock_t spi_lock;
 
 static int RFM12_probe(struct spi_device *spi_devicef)
 {
@@ -141,6 +142,9 @@ static struct spi_driver RFM12_driver = {
 char buff[64];
 struct device *pdev;
 char tx_buff[26];
+int busy;
+int i;
+
 struct spi_transfer transfer = {
         .tx_buf         = tx_buff,
 	.rx_buf 	= 0,
@@ -150,7 +154,6 @@ struct spi_transfer transfer = {
 static int init_Spi(void){
   
     int status; 
-    int i; 
     status = spi_register_driver(&RFM12_driver);
     if (status < 0) {
 	printk(KERN_ALERT "spi_register_driver() failed %d\n", status);
@@ -207,22 +210,16 @@ static int init_Spi(void){
 	printk(KERN_ALERT "spi_add_device() failed: %d\n",status);
     } 
     
-    tx_buff[2] = i++;
+    i++;
     tx_buff[0] = i++;
     tx_buff[1] = i++;
+    tx_buff[2] = i++;
     tx_buff[3] = i++;
-    
+
     spi_message_init(&msg);
-    
+	
     spi_message_add_tail(&transfer,&msg); 
-    status = spi_sync(spi_device, &msg);
-    
-    if(status){
-      printk(KERN_ALERT "SPI Transfer Failed: %d\n",status);
-      spi_unregister_device(spi_device);
-      spi_unregister_driver(&RFM12_driver);
-      return status;
-    }
+    spi_sync(spi_device, &msg);
     return status;
 }
     
@@ -233,6 +230,8 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
 {
 	printk(KERN_INFO "Read is called !\n");
+	
+	queue_spi_write();
 	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
@@ -259,6 +258,63 @@ static struct miscdevice eud_dev = {
 	.name           = "RFM12_RW",
 	.fops           = &fops
 };
+
+static void spi_completion_handler(void *arg)
+{        
+    busy = 0;
+    printk(KERN_INFO "spi complete handler called !\n");
+} 
+
+static int queue_spi_write(void)
+{
+    int status;
+    unsigned long flags;
+    
+    spi_message_init(&msg);
+    
+    /* this gets called when the spi_message completes */
+    msg.complete = spi_completion_handler;
+    msg.context = NULL;
+    
+    /* write some toggling bit patterns, doesn't really matter */
+     tx_buff[0] = i++;
+    tx_buff[1] = i++;
+    tx_buff[2] = i++;
+    tx_buff[3] = i++;
+
+    
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = NULL;
+    transfer.len = 4;
+    
+    spi_message_add_tail(&transfer, &msg);
+    
+    printk(KERN_INFO "spi message added tail !\n");
+    
+    spin_lock_irqsave(&spi_lock, flags);
+    printk(KERN_INFO "spi lock is taken !\n");
+    
+    if (spi_device){
+	status = spi_async(spi_device, &msg);
+	printk(KERN_INFO "spi async returns =  %d!\n",status);
+	
+    }else{
+	printk(KERN_ALERT "SPI Couldnt do a async send: %d\n",status);
+	status = -ENODEV;
+    }
+    
+    spin_unlock_irqrestore(&spi_lock, flags);
+    
+    printk(KERN_INFO "spi spin lock give !\n");
+    
+    if (status == 0){
+	busy = 1; 
+	printk(KERN_INFO "status = 0 busy = 1 !\n");
+      
+    }
+    printk(KERN_INFO "returning spi send !\n");
+    return status;
+} 
 
 static int __init RFM_init(void)
 {
