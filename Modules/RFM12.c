@@ -239,11 +239,14 @@ u16 xfer(u16 cmd) {
     
     spi_message_add_tail(&transfer, &msg);
     
+    spin_lock_irqsave(&spi_lock, flags);
     status = spi_async(spi_device, &msg);
+
+    spin_unlock_irqrestore(&spi_lock, flags);
+
     if (status == 0){
 	busy = 1; 
     }
-    spin_unlock_irqrestore(&spi_lock, flags);
 
     return  (rx_buff[0]<<8) | rx_buff[1];
 }
@@ -264,11 +267,14 @@ u8 byte(u8 cmd) {
     
     spi_message_add_tail(&transfer, &msg);
     
+    spin_lock_irqsave(&spi_lock, flags);
     status = spi_async(spi_device, &msg);
+
+    spin_unlock_irqrestore(&spi_lock, flags);
+
     if (status == 0){
 	busy = 1; 
     }
-    spin_unlock_irqrestore(&spi_lock, flags);
     return rx_buff[0];
 }
 
@@ -289,12 +295,14 @@ u16 writeCmd(u16 cmd) {
     
     spi_message_add_tail(&transfer, &msg);
     
+    spin_lock_irqsave(&spi_lock, flags);
     status = spi_async(spi_device, &msg);
+
+    spin_unlock_irqrestore(&spi_lock, flags);
+
     if (status == 0){
 	busy = 1; 
     }
-    spin_unlock_irqrestore(&spi_lock, flags);
-
     return  rx_buff[0] + rx_buff[1];
 }
 
@@ -311,7 +319,7 @@ static int queue_spi_write(void)
     msg.context = NULL;
     
     /* write some toggling bit patterns, doesn't really matter */
-     tx_buff[0] = i++;
+    tx_buff[0] = i++;
     tx_buff[1] = i++;
     
     transfer.tx_buf = tx_buff;
@@ -354,7 +362,7 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
 {
 	printk(KERN_INFO "Read is called !\n");
-	
+	//queue_spi_write();
 	//xfer(0xFF00);
 	//byte(0xF0);
 	writeCmd(0xFF00);
@@ -366,9 +374,6 @@ static ssize_t write(struct file *file, const char __user *buf,
 {
 	char temp[32] = {};
 	printk(KERN_INFO "write is called !\n");
-	
-
-	queue_spi_write();
 
 	printk(KERN_INFO "write is called !\n");
 	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
