@@ -306,55 +306,6 @@ uint16_t writeCmd(uint16_t cmd) {
     }
     return  rx_buff[0] + rx_buff[1];
 }
-
-
-static int queue_spi_write(void)
-{
-    int status;
-    unsigned long flags;
-    
-    spi_message_init(&msg);
-    
-    /* this gets called when the spi_message completes */
-    msg.complete = spi_completion_handler;
-    msg.context = NULL;
-    
-    /* write some toggling bit patterns, doesn't really matter */
-    tx_buff[0] = i++;
-    tx_buff[1] = i++;
-    
-    transfer.tx_buf = tx_buff;
-    transfer.rx_buf = NULL;
-    transfer.len = 2;
-    
-    spi_message_add_tail(&transfer, &msg);
-    
-    printk(KERN_INFO "spi message added tail !\n");
-    
-    spin_lock_irqsave(&spi_lock, flags);
-    printk(KERN_INFO "spi lock is taken !\n");
-    
-    if (spi_device){
-	status = spi_async(spi_device, &msg);
-	printk(KERN_INFO "spi async returns =  %d!\n",status);
-	
-    }else{
-	printk(KERN_ALERT "SPI Couldnt do a async send: %d\n",status);
-	status = -ENODEV;
-    }
-    
-    spin_unlock_irqrestore(&spi_lock, flags);
-    
-    printk(KERN_INFO "spi spin lock give !\n");
-    
-    if (status == 0){
-	busy = 1; 
-	printk(KERN_INFO "status = 0 busy = 1 !\n");
-      
-    }
-    printk(KERN_INFO "returning spi send !\n");
-    return status;
-} 
     
 /***************File Operations************************/
 static const char *id = "Hello World";
@@ -394,7 +345,23 @@ static struct miscdevice eud_dev = {
 	.fops           = &fops
 };
 
-/***********RFM12 Operations**********/
+/***********RFM12 Operations****************************************/
+volatile uint8_t nodeID;                    // address of this node
+volatile uint8_t networkID;                 // network group
+
+volatile uint8_t* Data;
+volatile uint8_t* DataLen;
+
+volatile uint8_t rf12_buf[RF_MAX];   	    // recv/xmit buf, including hdr & crc bytes
+
+volatile uint8_t rxfill;                    // number of data bytes in rf12_buf
+volatile int8_t rxstate;                    // current transceiver state
+volatile uint16_t rf12_crc;                 // running crc value
+uint32_t seqNum;                            // encrypted send sequence number
+uint32_t cryptKey[4];                       // encryption key to use
+long rf12_seq;                              // seq number of encrypted packet (or -1)
+
+u8 useEncryption = 0;
 enum {
     TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
 };
