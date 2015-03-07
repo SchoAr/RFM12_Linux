@@ -215,14 +215,6 @@ static int init_Spi(void){
 	spi_dev_put(spi_device);
 	printk(KERN_ALERT "spi_add_device() failed: %d\n",status);
     } 
-    
-    i++;
-    tx_buff[0] = i++;
-    tx_buff[1] = i++;
-    spi_message_init(&msg);
-	
-    spi_message_add_tail(&transfer,&msg); 
-    spi_sync(spi_device, &msg);
     return status;
 }
 /*************Send Receive SPi***********/
@@ -300,7 +292,7 @@ uint16_t writeCmd(uint16_t cmd) {
     spi_message_add_tail(&transfer, &msg);
     
     spin_lock_irqsave(&spi_lock, flags);
-    status = spi_async(spi_device, &msg);
+    status = spi_sync(spi_device, &msg);
 
     spin_unlock_irqrestore(&spi_lock, flags);
 
@@ -364,6 +356,43 @@ u8 useEncryption = 0;
 enum {
     TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
 };
+void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
+		uint8_t txPower, uint8_t airKbps) {
+	nodeID = nodeid;
+	networkID = groupid;
+	rf12_grp= groupid;
+
+	writeCmd(0x0000);    // initial SPI transfer added to avoid power-up problem
+	writeCmd(RF_SLEEP_MODE);            // DC (disable clk pin), enable lbd
+
+	// wait until RFM12B is out of power-up reset, this takes several *seconds*
+	writeCmd(RF_TXREG_WRITE);           // in case we're still in OOK mode
+
+	/*    while (NIRQ == 0)
+	 writeCmd(0x0000);
+	 */
+	writeCmd(0x80C7 | (freqBand << 4)); // EL (ena TX), EF (ena RX FIFO), 12.0pF
+	writeCmd(0xA640); // Frequency is exactly 434/868/915MHz (whatever freqBand is)
+	writeCmd(0xC600 + airKbps);   //Air transmission baud rate: 0x08= ~38.31Kbps
+	writeCmd(0x94A2);                   // VDI,FAST,134kHz,0dBm,-91dBm
+	writeCmd(0xC2AC);                   // AL,!ml,DIG,DQD4
+	if (networkID != 0) {
+		writeCmd(0xCA83);               // FIFO8,2-SYNC,!ff,DR
+		writeCmd(0xCE00 | networkID);   // SYNC=2DXX
+	} else {
+		writeCmd(0xCA8B);               // FIFO8,1-SYNC,!ff,DR
+		writeCmd(0xCE2D);               // SYNC=2D
+	}
+
+	writeCmd(0xC483);                   // @PWR,NO RSTRIC,!st,!fi,OE,EN
+	writeCmd(0x9850 | (txPower > 7 ? 7 : txPower)); // !mp,90kHz,MAX OUT
+	writeCmd(0xCC77);                   // OB1, OB0, LPX, ddy, DDIT, BW0
+	writeCmd(0xE000);                   // NOT USE
+	writeCmd(0xC800);                   // NOT USE
+	writeCmd(0xC049);                   // 1.66MHz,3.1V
+
+	rxstate = TXIDLE;
+}
 
 static uint16_t crc16_update(uint16_t crc, uint8_t data) {
 	int i;
@@ -409,9 +438,6 @@ static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 	SendStart_short(toNodeID, requestACK, sendACK);
 }
 
-
-
-
 /***********Init and Deinit************/
 static int __init RFM_init(void)
 {
@@ -438,6 +464,8 @@ static int __init RFM_init(void)
       gpio_free_array(input, ARRAY_SIZE(input));
       return status; 
     }
+    /*Initialize the RFM12*/
+    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
 }
