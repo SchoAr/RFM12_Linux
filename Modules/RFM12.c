@@ -8,6 +8,7 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include "RFM12_config.h"
+#include "RFM12.h"
 
 MODULE_AUTHOR("Schoenlieb");
 MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
