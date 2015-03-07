@@ -16,7 +16,10 @@ MODULE_LICENSE("GPL");
 /********************/
 int ledstatus = 0;
 /********************/
-static int queue_spi_write(void);
+
+static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
+		u8 requestACK, u8 sendACK);
+
 /*
  * Define for The LEDs
  */
@@ -309,7 +312,6 @@ uint16_t writeCmd(uint16_t cmd) {
     
 /***************File Operations************************/
 static const char *id = "Hello World";
-
 static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
 {
@@ -324,13 +326,10 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 static ssize_t write(struct file *file, const char __user *buf,
 					 size_t count, loff_t *ppos)
 {
-	char temp[32] = {};
-	printk(KERN_INFO "write is called !\n");
-
-	printk(KERN_INFO "write is called !\n");
-	simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
-	printk(KERN_INFO "write value =  %s \n",temp);	
+	/*The copieng of the user buffer is done in SendStart*/
+	SendStart(SERVER_MBED_NODE, buf,count, 0,0);
 	return 0;
+	
 }
 /* Struct with the File Operations*/
 static const struct file_operations fops = {
@@ -392,7 +391,7 @@ static void SendStart_short(uint8_t toNodeID, u8 requestACK, u8 sendACK) {
 	rf12_crc = crc16_update(rf12_crc, rf12_grp);
 	rxstate = TXPRE1;
 
-	xfer(RF_XMITTER_ON); // bytes will be fed via interrupts
+//	xfer(RF_XMITTER_ON); // bytes will be fed via interrupts
 }
 
 static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
@@ -406,7 +405,6 @@ static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 	for (i=0; i<rf12_len; i++) {
 		printk(KERN_INFO "%c", rf12_data[i]);
 	}
-	printk(KERN_INFO"\n"); 
 #endif
 	SendStart_short(toNodeID, requestACK, sendACK);
 }
