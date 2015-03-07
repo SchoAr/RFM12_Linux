@@ -1,0 +1,8 @@
+#!/bin/bash
+
+rmmod RFM12
+dmesg -c
+dmesg -c
+clear
+insmod RFM12.ko
+lsmod
