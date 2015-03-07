@@ -394,6 +394,9 @@ static struct miscdevice eud_dev = {
 };
 
 /***********RFM12 Operations**********/
+enum {
+    TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
+};
 
 
 
