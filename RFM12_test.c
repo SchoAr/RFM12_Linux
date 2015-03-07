@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+char send_message[255] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
 int main(voi){
   
   char str[20];
@@ -16,19 +18,22 @@ int main(voi){
     printf("Problem opening %s\n","/dev/RFM12_RW");
     return 1;
   }
-  
-  write(fp,"Hallo", 5);
-  int ret; 
-  ret = read(fp,&str,10);
-  printf("Return form Read = %d\n",ret);
-  printf("length of Read = %d\n",strlen(str)); 
-  printf("Read from Module = \n", str);
-  int i;
-  for(i = 0; i <= strlen(str) ; i++){
-     printf("%c",str[i]);
+   int i = 1;
+   int j = 0;
+   while (1) {
+	write(fp,send_message, i);
+	i++;
+	for (j=0; j<i; j++) {
+	    printf("%c", send_message[j]);
+	}
+ 	printf("\n");
+	usleep(1000*1000);
+	if(i > 10){
+	    break;
+	}
   }
-   printf("\n");
-  
   close(fp);
+  
+  printf("\n\nPROGRAM ENDED !!!!! \n");
   return 0;
 }
