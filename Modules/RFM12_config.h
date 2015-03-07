@@ -26,12 +26,12 @@
 #define SPI_BUS_CS0 0	
 #define SPI_BUS_SPEED 200000
 /********************************/
-#define RF12_433MHZ     1
-#define RF12_868MHZ     2
-#define RF12_915MHZ     3
+#define ACK_TIME                 15000        //R of ms to wait for an ack (usually between 600ms and 1300ms)
+#define CLIENT_MOTEINO_NODE          1
+#define CLIENT_MBED_NODE             2
+#define SERVER_MOTEINO_NODE         10
+#define SERVER_MBED_NODE            11
+#define NETWORD_ID                   212 //GROUP / NETWORK ID
 
-#define FREQ_BAND RF12_433MHZ
-#define NETWORK_ID		212		/*0xD4 Sync Pattern for RFM12 Required !!!*/
-#define TX_POWER 		0 		/* - txPower [optional - default = 0 (max)] (7 is min value)	*/
 
 #endif /* RFM12_CONFIG_H_ */
