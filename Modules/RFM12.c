@@ -366,6 +366,52 @@ enum {
     TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
 };
 
+static uint16_t crc16_update(uint16_t crc, uint8_t data) {
+	int i;
+
+	crc ^= data;
+	for (i = 0; i < 8; ++i) {
+		if (crc & 1)
+			crc = (crc >> 1) ^ 0xA001;
+		else
+			crc = (crc >> 1);
+	}
+
+	return crc;
+}
+
+static void SendStart_short(uint8_t toNodeID, u8 requestACK, u8 sendACK) {
+
+	rf12_hdr1= toNodeID | (sendACK ? RF12_HDR_ACKCTLMASK : 0);
+	rf12_hdr2= nodeID | (requestACK ? RF12_HDR_ACKCTLMASK : 0);
+
+//	if (useEncryption)
+//	Encryption(1);
+
+	rf12_crc = ~0;
+	rf12_crc = crc16_update(rf12_crc, rf12_grp);
+	rxstate = TXPRE1;
+
+	xfer(RF_XMITTER_ON); // bytes will be fed via interrupts
+}
+
+static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
+		u8 requestACK, u8 sendACK) {
+	int i;
+	rf12_len= sendLen;
+	memcpy((void*) rf12_data, sendBuf, sendLen);
+
+#ifdef DEBUG
+	printk(KERN_INFO "\nSending message from [%d]; crc:%x,  len: %d, message: ", nodeID, rf12_crc, rf12_len);
+	for (i=0; i<rf12_len; i++) {
+		printk(KERN_INFO "%c", rf12_data[i]);
+	}
+	printk(KERN_INFO"\n"); 
+#endif
+	SendStart_short(toNodeID, requestACK, sendACK);
+}
+
+
 
 
 /***********Init and Deinit************/
