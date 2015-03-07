@@ -223,7 +223,7 @@ static int init_Spi(void){
     return status;
 }
 /*************Send Receive SPi***********/
-u16 xfer(u16 cmd) {
+uint16_t xfer(uint16_t cmd) {
     int status;
     unsigned long flags;
     
@@ -252,7 +252,7 @@ u16 xfer(u16 cmd) {
     return  (rx_buff[0]<<8) | rx_buff[1];
 }
 
-u8 byte(u8 cmd) {
+uint8_t byte(uint8_t cmd) {
     int status;
     unsigned long flags;
     
@@ -279,7 +279,7 @@ u8 byte(u8 cmd) {
     return rx_buff[0];
 }
 
-u16 writeCmd(u16 cmd) {
+uint16_t writeCmd(uint16_t cmd) {
     int status;
     unsigned long flags;
     
