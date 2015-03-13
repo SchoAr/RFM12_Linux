@@ -15,11 +15,31 @@ MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
 MODULE_LICENSE("GPL");
 /********************/
 int ledstatus = 0;
-/********************/
-
+/********************************Prototyping*******************************/
 static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 		u8 requestACK, u8 sendACK);
+uint16_t writeCmd(uint16_t cmd);
+uint16_t xfer(uint16_t cmd);
+uint16_t crc16_update(uint16_t crc, uint8_t data);
+/************RFM12 Variables *************************************************/
+u8 useEncryption = 0;
+enum {
+    TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
+};
+volatile uint8_t nodeID;                    // address of this node
+volatile uint8_t networkID;                 // network group
 
+volatile uint8_t* Data;
+volatile uint8_t* DataLen;
+
+volatile uint8_t rf12_buf[RF_MAX];   	    // recv/xmit buf, including hdr & crc bytes
+
+volatile uint8_t rxfill;                    // number of data bytes in rf12_buf
+volatile int8_t rxstate;                    // current transceiver state
+volatile uint16_t rf12_crc;                 // running crc value
+uint32_t seqNum;                            // encrypted send sequence number
+uint32_t cryptKey[4];                       // encryption key to use
+long rf12_seq;                              // seq number of encrypted packet (or -1)
 /*
  * Define for The LEDs
  */
@@ -37,7 +57,7 @@ static struct gpio leds[] = {
 
 /*Define for the Inputs*/ 
 static struct gpio input[] = {
-    { INPUTPIN, GPIOF_IN, "INPUT" },
+    { IRQ_PIN, GPIOF_IN, "INPUT" },
 };
 /* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
@@ -48,17 +68,52 @@ static irqreturn_t input_ISR (int irq, void *data)
   printk(KERN_INFO"Intterupt Occured.\n");
 #endif
   
-  if(irq == input_irqs[0]) {
-      if(ledstatus){
-	gpio_set_value(leds[1].gpio,0);
-	ledstatus = 0;
-      }
-      else{
-	gpio_set_value(leds[1].gpio,1);
-	ledstatus = 1;
-      }	
-    }
-    return IRQ_HANDLED;
+/*	xfer(0x0000);
+
+	if (rxstate == TXRECV) {
+		uint8_t in = xfer(RF_RX_FIFO_READ);
+
+		if (rxfill == 0 && networkID != 0)
+			rf12_buf[rxfill++] = networkID;
+
+		rf12_buf[rxfill++] = in;
+		rf12_crc = crc16_update(rf12_crc, in);
+
+		if (rxfill >= rf12_len+ 6 || rxfill >= RF_MAX)
+		xfer(RF_IDLE_MODE);
+	} else {
+		uint8_t out;
+
+		if (rxstate < 0) {
+			uint8_t pos = 4 + rf12_len + rxstate++;
+			out = rf12_buf[pos];
+			rf12_crc = crc16_update(rf12_crc, out);
+		} else {
+			switch (rxstate++) {
+				case TXSYN1:
+				out = 0x2D;
+				break;
+				case TXSYN2:
+				out = rf12_grp;
+				rxstate = - (3 + rf12_len);
+				break;
+				case TXCRC1:
+				out = rf12_crc;
+				break;
+				case TXCRC2:
+				out = rf12_crc >> 8;
+				break;
+				case TXDONE:
+				xfer(RF_IDLE_MODE); // fall through
+				out = 0xAA;
+				break;
+				default:
+				out = 0xAA;
+			}
+		}
+		xfer(RF_TXREG_WRITE + out);
+	}*/
+	return IRQ_HANDLED;
 }
 
 static int init_Gpio(void){
@@ -92,7 +147,7 @@ static int init_Gpio(void){
     input_irqs[0] = ret;
     printk(KERN_INFO "Successfully requested INPUT1 IRQ # %d\n", input_irqs[0]);
     
-    ret = request_irq(input_irqs[0], input_ISR, IRQF_TRIGGER_RISING | IRQF_DISABLED, "gpiomod#input1", NULL);
+    ret = request_irq(input_irqs[0], input_ISR, IRQF_TRIGGER_FALLING | IRQF_DISABLED, "gpiomod#input1", NULL);
     if(ret) {
       printk(KERN_ERR "Unable to request IRQ: %d\n", ret);
       goto fail2;
@@ -101,7 +156,7 @@ static int init_Gpio(void){
     ledstatus = 1;
 /*Only when On LED is avaiable it can be set to indicate the driver is working*/ 
 #ifdef ON_LED_ENABLE
-    gpio_set_value(leds[0].gpio,1);
+//   gpio_set_value(leds[0].gpio,1);
 #endif     
     return 0;
     
@@ -337,25 +392,6 @@ static struct miscdevice eud_dev = {
 };
 
 /***********RFM12 Operations****************************************/
-volatile uint8_t nodeID;                    // address of this node
-volatile uint8_t networkID;                 // network group
-
-volatile uint8_t* Data;
-volatile uint8_t* DataLen;
-
-volatile uint8_t rf12_buf[RF_MAX];   	    // recv/xmit buf, including hdr & crc bytes
-
-volatile uint8_t rxfill;                    // number of data bytes in rf12_buf
-volatile int8_t rxstate;                    // current transceiver state
-volatile uint16_t rf12_crc;                 // running crc value
-uint32_t seqNum;                            // encrypted send sequence number
-uint32_t cryptKey[4];                       // encryption key to use
-long rf12_seq;                              // seq number of encrypted packet (or -1)
-
-u8 useEncryption = 0;
-enum {
-    TXCRC1, TXCRC2, TXTAIL, TXDONE, TXIDLE, TXRECV, TXPRE1, TXPRE2, TXPRE3, TXSYN1, TXSYN2,
-};
 void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 		uint8_t txPower, uint8_t airKbps) {
 	nodeID = nodeid;
@@ -393,8 +429,7 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 
 	rxstate = TXIDLE;
 }
-
-static uint16_t crc16_update(uint16_t crc, uint8_t data) {
+uint16_t crc16_update(uint16_t crc, uint8_t data) {
 	int i;
 
 	crc ^= data;
@@ -420,7 +455,7 @@ static void SendStart_short(uint8_t toNodeID, u8 requestACK, u8 sendACK) {
 	rf12_crc = crc16_update(rf12_crc, rf12_grp);
 	rxstate = TXPRE1;
 
-//	xfer(RF_XMITTER_ON); // bytes will be fed via interrupts
+	xfer(RF_XMITTER_ON); // bytes will be fed via interrupts
 }
 
 static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
@@ -442,14 +477,14 @@ static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 static int __init RFM_init(void)
 {
     int status = 0;
-    
+        unsigned long flags;
     /* Register GPIO and Interrupt)*/
     status = init_Gpio();
     if (status!= 0){
       return status; 
     }
     /*Reguster SPI Communication*/
-    status = init_Spi();
+/*   status = init_Spi();
     if(status != 0){
       printk(KERN_ALERT "SPI initialization failed: %d\n",status);
       return status;
@@ -465,7 +500,8 @@ static int __init RFM_init(void)
       return status; 
     }
     /*Initialize the RFM12*/
-    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
+//    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
+
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
 }
