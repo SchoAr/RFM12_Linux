@@ -22,6 +22,7 @@ static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 uint16_t writeCmd(uint16_t cmd);
 uint16_t xfer(uint16_t cmd);
 uint16_t crc16_update(uint16_t crc, uint8_t data);
+struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf);
 /************RFM12 Variables *************************************************/
 u8 useEncryption = 0;
 enum {
@@ -206,13 +207,7 @@ struct spi_transfer transfer = {
 	.rx_buf 	= 0,
         .len            = 4,
     };
-
-static void spi_completion_handler(void *arg)
-{        
-    busy = 0;
-    printk(KERN_INFO "spi complete handler called !\n");
-} 
-
+    
 static int init_Spi(void){
   
     int status; 
@@ -275,61 +270,138 @@ static int init_Spi(void){
 }
 
 /*************Send Receive SPi***********/
-uint16_t xfer(uint16_t cmd) {
-    int status;
-    unsigned long flags;
-    
-    spi_message_init(&msg);
-    msg.complete = spi_completion_handler;
-    msg.context = NULL;
-   
-    tx_buff[0] = cmd >> 8;
-    tx_buff[1] = cmd & 0xFF;
-    
-    transfer.tx_buf = tx_buff;
-    transfer.rx_buf = rx_buff;
-    transfer.len = 2;
-    
-    spi_message_add_tail(&transfer, &msg);
-    
-    spin_lock_irqsave(&spi_lock, flags);
-    
-    status = spi_sync(spi_device, &msg);
 
-    spin_unlock_irqrestore(&spi_lock, flags);
 
-    if (status == 0){
-	busy = 1; 
-    }
+#define NUM_MAX_CONCURRENT_MSG 3
+typedef enum _rfm12_state_t {
+    RFM12_STATE_NO_CHANGE = 0,
+    RFM12_STATE_CONFIG = 1,
+    RFM12_STATE_SLEEP = 2,
+    RFM12_STATE_IDLE = 3,
+    RFM12_STATE_LISTEN = 4,
+    RFM12_STATE_RECV = 5,
+    RFM12_STATE_RECV_FINISH = 6,
+    RFM12_STATE_SEND_PRE1 = 7,
+    RFM12_STATE_SEND_PRE2 = 8,
+    RFM12_STATE_SEND_PRE3 = 9,
+    RFM12_STATE_SEND_SYN1 = 10,
+    RFM12_STATE_SEND_SYN2 = 11,
+    RFM12_STATE_SEND = 12,
+    RFM12_STATE_SEND_TAIL1 = 13,
+    RFM12_STATE_SEND_TAIL2 = 14,
+    RFM12_STATE_SEND_TAIL3 = 15
+} rfm12_state_t;
 
-    return  (rx_buff[0]<<8) | rx_buff[1];
+struct rfm12_spi_message {
+    struct spi_message 		spi_msg;
+    struct spi_transfer 	spi_transfers;
+    rfm12_state_t 		spi_finish_state;
+    uint8_t 			spi_tx[8], spi_rx[8];
+    void* 			context;
+    uint8_t 			pos;
+};
+
+
+rfm12_state_t rfm12_state;
+spinlock_t rfm12_lock;
+uint8_t rfm12_free_spi_msgs;
+struct rfm12_spi_message rfm12_spi_msgs[NUM_MAX_CONCURRENT_MSG];
+
+
+static struct rfm12_spi_message* rfm12_claim_spi_message(void); 
+
+static void
+rfm12_unclaim_spi_message(struct rfm12_spi_message* spi_msg)
+{
+    rfm12_free_spi_msgs &= ~(1 << spi_msg->pos);
 }
 
-uint8_t byte(uint8_t cmd) {
-    int status;
+
+static struct rfm12_spi_message* rfm12_claim_spi_message(void)
+{
+  uint8_t i;
+  struct rfm12_spi_message* rv = NULL;
+    for (i=0; i < NUM_MAX_CONCURRENT_MSG; i++) {
+      if (0 == (rfm12_free_spi_msgs & (1 << i))) {
+	rfm12_free_spi_msgs |= (1 << i);
+	rv = &rfm12_spi_msgs[i];
+	rv->pos = i;
+	break;
+      }
+  }
+  return rv;
+}
+
+struct spi_transfer rfm12_control_spi_transfer(struct rfm12_spi_message* msg,
+  u8 pos, uint16_t cmd)
+  {
+      return rfm12_make_spi_transfer(cmd,
+      msg->spi_tx + 2*pos,
+      msg->spi_rx + 2*pos);
+}
+static void
+rfm12_spi_completion_common(struct rfm12_spi_message* msg)
+{
+    rfm12_unclaim_spi_message(msg);
+}
+
+static void
+__rfm12_generic_spi_completion_handler(void *arg)
+{
+    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
+     
+    if (RFM12_STATE_NO_CHANGE != spi_msg->spi_finish_state)
+      rfm12_state = spi_msg->spi_finish_state;
+    rfm12_spi_completion_common(spi_msg);
+}
+
+static void rfm12_generic_spi_completion_handler(void *arg)
+{
     unsigned long flags;
-    
-    spi_message_init(&msg);
-    msg.complete = spi_completion_handler;
-    msg.context = NULL;
-   
-    tx_buff[0] = cmd ;
-    
-    transfer.tx_buf = tx_buff;
-    transfer.rx_buf = rx_buff;
-    transfer.len = 1;
-    
-    spi_message_add_tail(&transfer, &msg);
-    
-    spin_lock_irqsave(&spi_lock, flags);
-    status = spi_async(spi_device, &msg);
+    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
 
-    spin_unlock_irqrestore(&spi_lock, flags);
+    spin_lock_irqsave(&rfm12_lock, flags);
 
-    if (status == 0){
-	busy = 1; 
-    }
-    return rx_buff[0];
+    __rfm12_generic_spi_completion_handler(arg);
+
+    spin_unlock_irqrestore(&rfm12_lock, flags);
+
+  
+}
+
+uint16_t xfer(uint16_t cmd) {
+    int err;
+    struct rfm12_spi_message* spi_msg;
+    uint8_t cmds[2];
+    rfm12_state_t finish_state;
+
+    spi_msg = rfm12_claim_spi_message();
+      
+    if (NULL == spi_msg)
+      return -EBUSY;
+    
+    spi_msg->spi_finish_state = finish_state;
+    spi_message_init(&spi_msg->spi_msg);
+    
+    spi_msg->spi_msg.complete =  rfm12_generic_spi_completion_handler;
+    spi_msg->spi_msg.context = (void*)spi_msg;
+
+    spi_msg->spi_transfers = rfm12_make_spi_transfer(cmd,spi_msg->spi_tx,spi_msg->spi_rx);//rfm12_control_spi_transfer(spi_msg, 0, cmds[0]);
+    
+    spi_msg->spi_transfers.cs_change = 1;
+    spi_msg->spi_transfers.delay_usecs = 0;
+    
+    spi_message_add_tail(&spi_msg->spi_transfers, &spi_msg->spi_msg);
+    
+/*    spi_msg->spi_transfers = rfm12_control_spi_transfer(spi_msg, i, cmds[i]);    
+    spi_message_add_tail(&spi_msg->spi_transfers, &spi_msg->spi_msg);
+*/
+    err = spi_async(spi_device, &spi_msg->spi_msg);
+  
+    if (err)
+      __rfm12_generic_spi_completion_handler((void*)spi_msg);
+    return err;
+    
 }
 
 struct spi_transfer
@@ -443,11 +515,11 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 		spi_message_add_tail(&tr9, &msg);
 	} else {
 		tr8 = rfm12_make_spi_transfer(0xCA8B,tx_buf+16,NULL);               // FIFO8,1-SYNC,!ff,DR
-		tr8.cs_change = 1;
+//		tr8.cs_change = 1;
 		spi_message_add_tail(&tr8, &msg);
 		
 		tr9 = rfm12_make_spi_transfer(0xCE2D,tx_buf+18,NULL);               // SYNC=2D
-		tr9.cs_change = 1;
+//		tr9.cs_change = 1;
 		spi_message_add_tail(&tr9, &msg);
 	}
 
@@ -479,7 +551,6 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	if (err){
 	      printk(KERN_INFO "Error sending second SPI Message !\n");
 	}
-	
 	rxstate = TXIDLE;
 }
 uint16_t crc16_update(uint16_t crc, uint8_t data) {
