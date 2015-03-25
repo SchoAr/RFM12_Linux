@@ -28,7 +28,7 @@ int main(voi){
 	}
  	printf("\n");
 	usleep(1000*1000);
-	if(i > 10){
+	if(i > 2){
 	    break;
 	}
   }
