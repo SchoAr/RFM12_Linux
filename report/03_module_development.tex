@@ -1,0 +1,232 @@
+\chapter{Developing the Module}
+
+A good overview of module development can be found in this book: \url{http://lwn.net/Kernel/LDD3/}\newline
+
+This Chapter describes the development of the Module. The Documentation is described for the commit with the number \verb|e60cffe5ad3cda37924a5ba57fd7f89476cb4fc6|. The latest version can be found on GitHub with the link:\url{https://github.com/SchoAr/RFM12_Linux/tree/master/Modules}.\newline
+The Compiler for this module is not a standard GCC. Because The Compiled output has to be working on a ARM processor and not on an Intel. Therefore a Cross Compiler has to be used. With that it is possible to compile on a Intel machine code for a ARM processor. The Instructions how to get the cross compiler running can be found here \url{https://github.com/dasGringuen/MicroZedKernel/blob/master/02-toolchain.txt}
+For the Compilation of the Driver a special makefile was taken. It contains the path to the Kernel Sources, and the IP address of the Target. With the command \verb|make| the Driver is compiling. With the command \verb|make install| the compiled Driver is copied to the target device. \newline
+All the Components of the Driver are saved in one File, cause they all belong to the driver of the RFM12. 
+
+\subsection{Loading and unloading the module}
+
+Before we discuss the basics of a module, we discuss the basic System calls for the module Development. They are very important for the Debugging and the working with the module. 
+The first System call is \verb|insmod|, with this it is possible to load the module into the Kernel. For example with \verb|insmod RFM12| the module of the RFM12 is loaded into the Kernel. Before we can load a newer version of the module into the Kernel we have to remove the older one. This is done with the System calls \verb|rmmod|. Very helpful for the debugging is the System calls \verb|lsmod|. This shows the running modules, and also the Memory needed from each. For Debugging the most impotent is \verb|dmesg|. This shows the Messages which are printed with the Kernel print function. With the function \verb|printk|, every Debug print is realised. \newline
+For a easy use of the above described calls a script is available. This script unloads first the module, and after that the older Kernel prints are deleted. After that the Script loads the new module and shows how much Memory is needed. The Script is also on GitHub :\url{https://github.com/SchoAr/RFM12_Linux/blob/master/module_run}.\newline
+
+The most simple Driver has just a method which is called when he is loaded, and one which is called when he is unloaded. Here is an example of this: \url
+{https://github.com/dasGringuen/MicroZedKernel/blob/master/src/hello_world/hello.c}. It can also be found in the used repository in one of the first commits. Important is that the functions are simply declared and the Kernel knows that he has to call this functions via the following macros: 
+
+\begin{lstlisting}
+module_init(RFM_init);
+module_exit(RFM_exit);
+\end{lstlisting}
+
+With this Macros the Module can give also other Information to the Kernel like the following:
+
+\begin{lstlisting}
+MODULE_AUTHOR("Schoenlieb");
+MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
+MODULE_LICENSE("GPL");                                                                                                                        
+\end{lstlisting}
+
+In the function RFM12\_init the whole driver gets initialized. This means that after the end of this function everything has to be ready to use the Device. The first thing which is done in the module is to Initialise the GPIO. This is done with a function call. This function will be described in the GPIO section of the module. Important is that the return value has to be checked if that woks. After that the SPI is Initialized. Here also the return value is checked if this is working. The problem in this version of the module is, that if the SPI initialisation fails the function is finished, and the GPIO is still allocated. This can cause mayor problems, because the de-initialisation can fail. Cause it try s to de-initialise something which don’t exist. This can cause the last possibility to reset the Device. This is not a option in the final module. \newline
+The right way to do an error handling is shown by the registration of the file operations. If they fail the GPIO is freed and the start position is nearly reached. Nearly reached because the SPI is not freed. The state of the module shows that the SPI is not fully integrated yet. Now that the Hardware is Initialized, the RFM12 can be Initialized. The Driver does not support a other configuration of the RFM12 yet. This will be implemented in the future. For Debugging reasons a print indicates that the Initialisation was successful. \newline
+
+If the module gets unloaded, it has to de-initialise everything. if this function is not working as expected the loading of the module wont work any more and the device has to be resetted. This indicates that a exit method is as important as the initialize method. The order of the freeing is not important but everything has to be considered. Happily at the developing process it is noticed if the exit method is not working correctly. Cause every time a newer version is tested the older driver has to be unloaded. If he cant allocate all resources any more the exit method should be checked.  
+
+\subsection{Read and Write Functions}
+
+The read and write functions are very important, because they are used for sending and receiving data with the RFM12. There is a tutorial via this link: \url{http://www.codeproject.com/Articles/112474/A-Simple-Driver-for-Linux-OS}. The RFM12 Driver which has the read write operations implemented, without the SPI and the RFM12 functions can be found via this link: \url{https://github.com/SchoAr/RFM12_Linux/blob/66c55b2286c8d3eae915cd521587cd6160c13055/Modules/RFM12.c}. On GitHub also exists a test program which interacts with the RFM12 module. It can be found via this link and will be discussed later in this Chapter: \url{https://github.com/SchoAr/RFM12_Linux/blob/7d31dd367e1de8eefa65ea900e642b0e6b27f790/RFM12_test.c}.\newline This program has been changed, to match the Bare-metal main loop implementation. But this version shows the working of the read and write functions. \newline
+
+The read function should simply return a "Hello World" string to indicate that the read method is working. This is done with this function: 
+\begin{lstlisting}   
+static const char *id = "Hello World";
+                                                                                                                    
+static ssize_t read(struct file *file, char __user *buf, size_t count,loff_t *ppos)
+{
+		printk(KERN_INFO "Read is called !\n");
+		return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
+}
+\end{lstlisting}
+
+The Prototype of this function is given. It simply copies the values form the buf to the given buffer from the function. So it is simply separating the memory of the Kernel to the memory of the user space. This function can also be used with the build in function \verb|cat|. \newline
+
+The write function is similar to the read it is coping the received data in an internal buffer. In this case the buffer is just used to indicate that we received something and print it to the kernel log. 
+
+\begin{lstlisting}
+  static ssize_t write(struct file *file, const char __user *buf,size_t count, loff_t *ppos)
+{
+		char temp[32] = {};
+		printk(KERN_INFO "write is called !\n");
+		simple_write_to_buffer(temp, sizeof(temp), ppos, buf, count);
+		printk(KERN_INFO "write value = %s \n",temp);
+		return 0;
+}                                                                                                                        
+\end{lstlisting}
+
+This function is not working with the echo command because the echo command is not indicating how much data is passed to this function.The function simply freezes because it is waiting for a infinite amount of data and receives only a finite number. In a further state of the driver the length should be indicated by the length of the passed array. Never the less this function is working with the test program and has also be changed for the sending functionality of the RFM12. \newline
+
+Now when we have this functions we need to tell the Kernel that they exist and what it should do with it. This is done via this 2 structs. 
+
+\begin{lstlisting}
+  static const struct file_operations fops = {
+		.owner = THIS_MODULE,
+		.read = read,
+		.write = write,
+	};
+	
+	static struct miscdevice eud_dev = {
+		.minor = MISC_DYNAMIC_MINOR,
+		.name = "RFM12_RW",
+		.fops = &fops
+	};                                                                                                                       
+\end{lstlisting}
+
+The first struct indicates which operations are available and saves the pointer to this functions. There are more functions which can be assigned. In a Future state of the module the open and close method can be used to indicate that the receiving is possible or not. \newline
+The second struct handles the registration of the module. The minor number is assigned dynamically by the operating System and the module does not care about it. But it is necessary for the numbering of the module. Important is the name, it indicates which name will be displayed to the user. The name will be found at "/dev/RFM12\_RW". \newline
+
+The first step in testing this program is to open the RFM12\_RW device. after that the write is simply tested with this line \verb| write(fp,"Hallo", 5);|. This will be visible in the Kernel log. The read function is looking similar, it just gives a struct which will receive the data. The call is as followed: \verb| ret = read(fp,&str,10);|. This function will receive the hello world string. After the operations it is important to close the file again, otherwise it cant be opened any more. 
+
+\subsection{GPIO Operation}
+
+For accessing hardware the GPIO is normally the first choice. Also in this project the GPIO was the first choice. Also it will be needed for the 3 LEDs and the Interrupt. There exists an tutorial which describes how to access the GPIOS and how to register an Interrupt on them. It can be found via this link: \url{https://github.com/wendlers/rpi-kmod-samples/blob/master/modules/kmod-gpio_inpirq/gpiomod_inpirq.c}. All the needed defines can be found in this file : RFM12\_config.h.\newline
+The Version of the RFM12 at which the GPIO Interrupt toggles an LED can be found via this link: \url{https://github.com/SchoAr/RFM12_Linux/blob/interrupt_work/Modules/RFM12.c}.\newline
+
+Before we can initialize the GPIOs we have to define it somewhere. This is done via the following struct: 
+
+\begin{lstlisting}
+	static struct gpio leds[] = {
+		{ ON_LED, GPIOF_OUT_INIT_HIGH, "ON" },
+		{ RX_LED, GPIOF_OUT_INIT_HIGH, "RX" },
+		{ TX_LED, GPIOF_OUT_INIT_HIGH, "TX" },
+	};                                                                                                                
+\end{lstlisting}
+
+The defines of *\_LED can be found in the RFM12\_config.h file, and simply describes the Pin at which the LEDs are connected.\newline Now the function \verb|ret = gpio_request_array(leds, ARRAY_SIZE(leds));| is used to request the GPIOs. After that the Module can use the GPIOs very easy.\newline With the function \verb|gpio_set_value(leds[i].gpio,1);| the LED is turned on. To turn it of the 1 has to be replaced with a 0.\newline 
+
+The Interrupt input is defined via a array. Also the input IRQs need to be declared declaration. The following listing shows the definition: 
+
+\begin{lstlisting}
+	static struct gpio input[] = {
+		{ INPUTPIN, GPIOF_IN, "INPUT" },
+	};
+	
+	static int input_irqs[] = { -1 };
+\end{lstlisting}
+
+Before we can declare the Interrupt we also need to request the GPIO. After that we can use this function: \verb| ret = gpio_to_irq(input[0].gpio);| to get a IRQ from a GPIO. This is saved in the input\_irq array. Now the following function call defines the IRQ: 
+
+\begin{lstlisting}
+ ret = request_irq(input_irqs[0], input_ISR, IRQF_TRIGGER_RISING | IRQF_DISABLED, "gpiomod#input1", NULL);
+\end{lstlisting}
+
+With this function call we define every parameter of the Interrupt. The Input ISR is passed and called when then interrupt is triggered. The Trigger is a Rising edge. This is changed in later versions of the module. Now we have the same Interrupt behaviour as in the Bare-metal program.\newline
+
+In GPIO Initialization is a good example how good error management is done. Normally it is not used to work in C with labels, but in this case it is very useful. If the request of the Interrupt fails the LEDs are freed. If the initialisation of the Interrupt fails, all GPIOs are freed. If this function fails everything is as before.
+ 
+\subsection{SPI}
+
+The connection via the SPI Interface is more difficult than the usage of a GPIO. Here is no explanation of the SPI Interface, because it should be known at this point. A Tutorial for the SPI module can be found via this link: \url{http://wenku.baidu.com/view/ab20084269eae009581bec37} . It describes the basic function of the programming. Another Resource for information can be found via this link: \url{https://www.kernel.org/doc/Documentation/spi/spi-summary}.\newline
+
+Very important is to test the SPI with a spidev driver, described in the device Tree section. After the spidev is removed we can seek for the number of the SPI controller. It can be found in this directory: \verb| /sys/class/spi_master|. There are 2 numbers spi0 and spi32766. To try spi0 will not work very well cause it is the SPI for the SD Card and is already in use. Therefore we need the other SPI. Now we can create a spi\_driver struct via the following struct. The 2 functions are required for the driver to indicate the load and unload for the SPI driver.
+
+\begin{lstlisting}
+	static int RFM12_probe(struct spi_device *spi_devicef)
+	{
+		spi_device = spi_devicef;
+		return 0;
+	}
+	
+	static int RFM12_remove(struct spi_device *spi_devicef)
+	{
+		spi_device = NULL;
+		return 0;
+	}
+	
+	static struct spi_driver RFM12_driver = {
+		.driver = {
+			.name = "RFM12_spi",
+			.owner = THIS_MODULE,
+		},
+		.probe = RFM12_probe,
+		.remove = RFM12_remove,
+	};
+\end{lstlisting}
+
+Now it is necessary to request the SPI master. This is done with the following function: \verb|spi_master = spi_busnum_to_master(SPI_BUS);|. Here the SPI number is needed, which was looked up before. Now that we have a master device which controls the bus we can access a spi\_device. The Function which allocates this device is the following:\newline
+\verb|spi_device = spi_alloc_device(spi_master);|. This device is the most important part for the SPI communication, because it is the abstraction of the RFM12 on the SPI bus. Now the device for the RFM12 can be configured with this parameters: 
+
+\begin{lstlisting}
+	spi_device->chip_select = SPI_BUS_CS0; 		//0
+
+	spi_device->max_speed_hz = SPI_BUS_SPEED; //200000
+	spi_device->mode = SPI_MODE_0;						
+	spi_device->bits_per_word = 8;
+	spi_device->irq = -1;
+	spi_device->controller_state = NULL;
+	spi_device->controller_data = NULL;                                                                                                                         
+\end{lstlisting}
+
+The Chip select is 0 as defined in the Vivado and the Bus speed is fixed with max 200kHz. With the SPI\_MODE\_0 the normal clock parameter are defined. The values for this can be found in the spi.h in the Kernel sources. In this case the clock is active high an has no phase. Now the Device can be registered to the master via the following function:\newline \verb| status = spi_add_device(spi_device);|.\newline
+
+There are 2 functions for the sending via the SPI. The first is:\verb|spi_sync(spi_device, &msg);|. This function waits until the sending is finished. Because waiting is not allowed, and it will be punished with a total system failure, there is another function. This function returns after the sending is started, and a callback indicates that the sending has finished. The function call of the sending as as followed: \verb|spi_async(spi_device, &msg)|.\newline
+
+To send data via the SPI a spi\_transfer struct has to be created. It holds the Buffers for the sending and receiving. in the RFM12.c exists a function which creates a transfer struct. The function is as followed: 
+
+\begin{lstlisting}
+
+struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf)
+{
+	struct spi_transfer tr = {
+		.tx_buf = tx_buf,
+		.rx_buf = rx_buf,
+		.len = 2,
+	};
+	tx_buf[0] = (cmd >> 8) & 0xff;
+	tx_buf[1] = cmd & 0xff;
+	return tr;
+}                                                                                                                          
+\end{lstlisting}
+  
+This function receives a u16 which is then put into the tx buffer. Receiving is not necessary in this case. After this struct is created it can be added to the message. The message has to be initialised before. The add function is the following: \verb|spi_message_add_tail(&tr1, &msg);|.
+
+\subsection{Implementation of the RFM12}
+
+The Initialisation of the RFM12 takes the same Parameter as the Bare-Metal program. It sends also the same commands to the RFM12, but the sending is done in an other way. The first attempt to Initialise the RFM12 was to create a message with 1 transmission and send it synchronously. This is working, but the time for the Initialisation function to be finished is enormous. This is not very useful in a system if the module needs to load 3 seconds. In a other project the module Initialisation is done in an other way. The code for this can be found with this link: \url{https://github.com/gkaindl/rfm12b-linux/blob/master/rfm12b.c}. \newline
+Not every message is send with just one transmission. The transmissions are send with just 2 messages. The following listing shows this concept for the first part of the initialisation. 
+
+\begin{lstlisting}
+	spi_message_init(&msg);
+	
+	tr1 = rfm12_make_spi_transfer(RF_SLEEP_MODE,tx_buf+2,NULL); // DC (disable clk pin), enable lbd
+	tr1.cs_change = 1;
+	spi_message_add_tail(&tr1, &msg);
+	
+	tr2 = rfm12_make_spi_transfer(RF_TXREG_WRITE,tx_buf+4,NULL); // in case we're still in OOK mode
+	tr2.cs_change = 1;
+	spi_message_add_tail(&tr2, &msg); 
+		
+	err = spi_sync(spi_device, &msg);
+	if (err){
+		printk(KERN_INFO "Error sending 2 SPI Message %d!\n",err);
+	}
+	msleep(100);
+                                                                                                                          
+\end{lstlisting}
+
+For the sending method the write method has to be changed. It is simply calling the SendStart function which is already known from the Bare-metal program. One difference is here that the coping of the data is done in the SendStart function, and cause twice coping is not needed this is not needed in the write function. The following listing shows how it is done. 
+
+\begin{lstlisting}
+static ssize_t write(struct file *file, const char __user *buf,size_t count, loff_t *ppos)
+{
+	/*The copieng of the user buffer is done in SendStart*/
+	SendStart(SERVER_MBED_NODE, buf,count, 0,0);
+	return 0;
+}
+\end{lstlisting}
+
+At this point the read function is not created for the RFM12. \newline
+
+At this point of the development process the Interrupt is not working properly. It is possible to send Data in the Interrupt, but the RFM12 is not working with them. The main problem is that the Interrupt is doing the sending. This was a first attempt taken from the Bare-metal program but it is not sufficient for a Linux module. \newline
+
+The Idea now is to let a tasklet be scheduled in the Interrupt. This is then Synchronous to the other processes. This allows the usage of the spi\_synchronus function which is much easier to handle. an example for a tasklet can be found cia this link : \url{http://blogsmayan.blogspot.co.at/p/programming-interrupts-in-raspberry-pi.html}

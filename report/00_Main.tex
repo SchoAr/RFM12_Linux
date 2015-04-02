@@ -1,0 +1,91 @@
+% **************************************************************************************************
+% ** SPSC Report and Thesis Template
+% **************************************************************************************************
+
+\newcommand{\DocumentType}{report} % "thesis" / "report" / "homework"
+\newcommand{\DocumentLanguage}{en} % "en" / "de"
+\newcommand{\PaperSize}{a4paper} % "a4paper" / "letterpaper"
+\newcommand{\Twosided}{false} % "true" / "false"
+
+% **************************************************************************************************
+% template setup -- do not change these unless you know what you are doing!
+\input{./base/packages_\DocumentType}
+\input{./base/layout_\DocumentType}
+\input{./base/macros}
+% \graphicspath{{./drawings/}{./plots/}{./images/}}
+% **************************************************************************************************
+% ATTENTION: There is a stylesheet provided for makeindex; set makeindex to -s "./base/index.sty"
+% **************************************************************************************************
+
+% uncomment to get watermarks:
+% \usepackage[first,bottom,light,draft]{draftcopy}
+% \draftcopyName{ENTWURF}{160}
+
+
+% **************************************************************************************************
+% information fields
+
+% general
+\newcommand{\DocumentTitle}{Driver Development}
+\newcommand{\DocumentSubtitle}{Linux Module \newline for the RFM12 on the Xilinx MicroZed Board}
+\newcommand{\ShortTitle}{RFM12} % used in headers (keep short!)
+\newcommand{\DocumentAuthor}{ Armin Schönlieb}
+\newcommand{\DocumentDate}{Graz, \today}
+%    for thesis only (will be ignored for reports)
+\newcommand{\ThesisType}{module Report}
+\newcommand{\Supervisors}{Adrian Remonda} % Supervisor 1 \\ Supervisor 2 \\ ...
+%   for report only: revision number
+\newcommand{\RevPrefix}{alpha~}
+\newcommand{\RevLarge}{1}
+\newcommand{\RevSmall}{0}
+
+% confidential? (can of course also be used for other messages/notes)
+\newcommand{\ConfidNote}{\textbf{RFM12 Module}, \today}
+
+% correct bad hyphenation
+\hyphenation{}
+\input{./base/opt_macros}
+
+\usepackage{listings}
+\renewcommand{\lstlistingname}{Code}
+\lstset{
+   basicstyle=\scriptsize\ttfamily,
+   keywordstyle=\color{blue},
+   stringstyle=\color{mygreen},
+   commentstyle=\color{mygreen},
+   emph={square}, 
+   emphstyle=\color{mymauve},
+   tabsize=2,
+	 showstringspaces=false,
+   flexiblecolumns=false,
+   numbers=left,
+   numberstyle=\tiny\color{mygray},
+   stepnumber=1,
+   numbersep=5pt,
+   xleftmargin=15pt,
+	 language=C++,
+	 captionpos=t
+ }
+
+
+% **************************************************************************************************
+% **************************************************************************************************
+% **************************************************************************************************
+\begin{document}
+% **************************************************************************************************
+% titlepage
+\input{./base/titlepage_\DocumentType}\emptydoublepage
+%\emptydoublepage
+\tableofcontents
+
+% **************************************************************************************************
+% mainmatter\color[rgb]{0,0,0}
+\input{./01_introduction}\emptydoublepage
+\input{./02_kernel_build}\emptydoublepage
+\input{./03_module_development}\emptydoublepage
+%\bibliography{Literatur}
+
+% place all floats and create label on last page
+\FloatBarrier\label{end-of-document}
+\end{document}
+
