@@ -23,6 +23,7 @@ uint16_t writeCmd(uint16_t cmd);
 uint16_t xfer(uint16_t cmd);
 uint16_t crc16_update(uint16_t crc, uint8_t data);
 struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf);
+static void RFM12_tasklet_handler(unsigned long );
 /************RFM12 Variables *************************************************/
 u8 useEncryption = 0;
 enum {
@@ -42,6 +43,7 @@ volatile uint16_t rf12_crc;                 // running crc value
 uint32_t seqNum;                            // encrypted send sequence number
 uint32_t cryptKey[4];                       // encryption key to use
 long rf12_seq;                              // seq number of encrypted packet (or -1)
+
 /*
  * Define for The LEDs
  */
@@ -59,18 +61,21 @@ static struct gpio leds[] = {
 
 /*Define for the Inputs*/ 
 static struct gpio input[] = {
-    { IRQ_PIN, GPIOF_IN, "INPUT" },
+    { INPUTPIN, GPIOF_IN, "INPUT" },
 };
 /* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
 
-static irqreturn_t input_ISR (int irq, void *data)
-{
-#ifdef DEBUG
-  printk(KERN_INFO"Intterupt Occured.\n");
-#endif
-  
-//	xfer(0x0000);
+
+static void RFM12_tasklet_handler(unsigned long args){
+        
+        printk(KERN_INFO "%s\n", __func__);
+
+	printk("Tasklet started\n");
+	mdelay(1000);
+	printk("Tasklet ended\n");	
+/*  
+  //	xfer(0x0000);
 	printk(KERN_INFO"rxstate = %d.\n",rxstate);
 	if (rxstate == TXRECV) {
 		printk(KERN_INFO"TXRECV will not be working!!!!!!!!!!!.\n");
@@ -118,10 +123,27 @@ static irqreturn_t input_ISR (int irq, void *data)
 		xfer(RF_TXREG_WRITE + out);
 	}
 	printk(KERN_INFO"Returning from Interrupt\n");
+  */
+	  
+}
+
+DECLARE_TASKLET(RFM12_tasklet, RFM12_tasklet_handler, 0);
+
+unsigned long flags;
+static irqreturn_t input_ISR (int irq, void *data)
+{
+#ifdef DEBUG
+        printk(KERN_INFO"IRQ called.\n");
+#endif
+	tasklet_schedule(&RFM12_tasklet);
+
 	return IRQ_HANDLED;
 }
 
+
+
 static int init_Gpio(void){
+    
     int ret = 0;
     int i; 
     /*Request LEDs*/
@@ -361,7 +383,7 @@ __rfm12_generic_spi_completion_handler(void *arg)
 static void rfm12_generic_spi_completion_handler(void *arg)
 {
     unsigned long flags;
-    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
+//    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
 
     spin_lock_irqsave(&rfm12_lock, flags);
 
@@ -375,7 +397,7 @@ static void rfm12_generic_spi_completion_handler(void *arg)
 uint16_t xfer(uint16_t cmd) {
     int err;
     struct rfm12_spi_message* spi_msg;
-    uint8_t cmds[2];
+ //   uint8_t cmds[2];
     rfm12_state_t finish_state;
 
     spi_msg = rfm12_claim_spi_message();
@@ -641,7 +663,7 @@ static int __init RFM_init(void)
       return status; 
     }
     /*Initialize the RFM12*/
-    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
+//    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
 
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
