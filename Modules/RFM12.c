@@ -44,6 +44,8 @@ uint32_t seqNum;                            // encrypted send sequence number
 uint32_t cryptKey[4];                       // encryption key to use
 long rf12_seq;                              // seq number of encrypted packet (or -1)
 
+struct spi_device *spi_device;
+
 /*
  * Define for The LEDs
  */
@@ -72,7 +74,23 @@ static void RFM12_tasklet_handler(unsigned long args){
         printk(KERN_INFO "%s\n", __func__);
 
 	printk("Tasklet started\n");
-	mdelay(1000);
+	struct spi_transfer tr1;
+	struct spi_message msg;
+	u8 tx_buf[26];
+	int err;
+   
+
+	spi_message_init(&msg);	
+	
+	tr1 = rfm12_make_spi_transfer(0x0000,tx_buf,NULL);    // initial SPI transfer added to 
+        spi_message_add_tail(&tr1, &msg);
+	
+	err = spi_sync(spi_device, &msg);
+	if (err){
+	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
+	}
+    
+        
 	printk("Tasklet ended\n");	
 /*  
   //	xfer(0x0000);
@@ -196,7 +214,6 @@ static int init_Gpio(void){
 }
 /***************SPI Operations************************/
 struct spi_master *spi_master;
-struct spi_device *spi_device;
 struct spi_message msg;
 spinlock_t spi_lock;
 
@@ -297,135 +314,9 @@ static int init_Spi(void){
 /*************Send Receive SPi***********/
 
 
-#define NUM_MAX_CONCURRENT_MSG 3
-typedef enum _rfm12_state_t {
-    RFM12_STATE_NO_CHANGE = 0,
-    RFM12_STATE_CONFIG = 1,
-    RFM12_STATE_SLEEP = 2,
-    RFM12_STATE_IDLE = 3,
-    RFM12_STATE_LISTEN = 4,
-    RFM12_STATE_RECV = 5,
-    RFM12_STATE_RECV_FINISH = 6,
-    RFM12_STATE_SEND_PRE1 = 7,
-    RFM12_STATE_SEND_PRE2 = 8,
-    RFM12_STATE_SEND_PRE3 = 9,
-    RFM12_STATE_SEND_SYN1 = 10,
-    RFM12_STATE_SEND_SYN2 = 11,
-    RFM12_STATE_SEND = 12,
-    RFM12_STATE_SEND_TAIL1 = 13,
-    RFM12_STATE_SEND_TAIL2 = 14,
-    RFM12_STATE_SEND_TAIL3 = 15
-} rfm12_state_t;
-
-struct rfm12_spi_message {
-    struct spi_message 		spi_msg;
-    struct spi_transfer 	spi_transfers;
-    rfm12_state_t 		spi_finish_state;
-    uint8_t 			spi_tx[8], spi_rx[8];
-    void* 			context;
-    uint8_t 			pos;
-};
-
-
-rfm12_state_t rfm12_state;
-spinlock_t rfm12_lock;
-uint8_t rfm12_free_spi_msgs;
-struct rfm12_spi_message rfm12_spi_msgs[NUM_MAX_CONCURRENT_MSG];
-
-
-static struct rfm12_spi_message* rfm12_claim_spi_message(void); 
-
-static void
-rfm12_unclaim_spi_message(struct rfm12_spi_message* spi_msg)
-{
-    rfm12_free_spi_msgs &= ~(1 << spi_msg->pos);
-}
-
-
-static struct rfm12_spi_message* rfm12_claim_spi_message(void)
-{
-  uint8_t i;
-  struct rfm12_spi_message* rv = NULL;
-    for (i=0; i < NUM_MAX_CONCURRENT_MSG; i++) {
-      if (0 == (rfm12_free_spi_msgs & (1 << i))) {
-	rfm12_free_spi_msgs |= (1 << i);
-	rv = &rfm12_spi_msgs[i];
-	rv->pos = i;
-	break;
-      }
-  }
-  return rv;
-}
-
-struct spi_transfer rfm12_control_spi_transfer(struct rfm12_spi_message* msg,
-  u8 pos, uint16_t cmd)
-  {
-      return rfm12_make_spi_transfer(cmd,
-      msg->spi_tx + 2*pos,
-      msg->spi_rx + 2*pos);
-}
-static void
-rfm12_spi_completion_common(struct rfm12_spi_message* msg)
-{
-    rfm12_unclaim_spi_message(msg);
-}
-
-static void
-__rfm12_generic_spi_completion_handler(void *arg)
-{
-    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
-     
-    if (RFM12_STATE_NO_CHANGE != spi_msg->spi_finish_state)
-      rfm12_state = spi_msg->spi_finish_state;
-    rfm12_spi_completion_common(spi_msg);
-}
-
-static void rfm12_generic_spi_completion_handler(void *arg)
-{
-    unsigned long flags;
-//    struct rfm12_spi_message* spi_msg = (struct rfm12_spi_message*)arg;
-
-    spin_lock_irqsave(&rfm12_lock, flags);
-
-    __rfm12_generic_spi_completion_handler(arg);
-
-    spin_unlock_irqrestore(&rfm12_lock, flags);
-
-  
-}
 
 uint16_t xfer(uint16_t cmd) {
-    int err;
-    struct rfm12_spi_message* spi_msg;
- //   uint8_t cmds[2];
-    rfm12_state_t finish_state;
-
-    spi_msg = rfm12_claim_spi_message();
-      
-    if (NULL == spi_msg)
-      return -EBUSY;
-    
-    spi_msg->spi_finish_state = finish_state;
-    spi_message_init(&spi_msg->spi_msg);
-    
-    spi_msg->spi_msg.complete =  rfm12_generic_spi_completion_handler;
-    spi_msg->spi_msg.context = (void*)spi_msg;
-
-    spi_msg->spi_transfers = rfm12_make_spi_transfer(cmd,spi_msg->spi_tx,spi_msg->spi_rx);//rfm12_control_spi_transfer(spi_msg, 0, cmds[0]);
-    
-    spi_msg->spi_transfers.cs_change = 1;
-    spi_msg->spi_transfers.delay_usecs = 0;
-    
-    spi_message_add_tail(&spi_msg->spi_transfers, &spi_msg->spi_msg);
-    
-/*    spi_msg->spi_transfers = rfm12_control_spi_transfer(spi_msg, i, cmds[i]);    
-    spi_message_add_tail(&spi_msg->spi_transfers, &spi_msg->spi_msg);
-*/
-    err = spi_async(spi_device, &spi_msg->spi_msg);
-  
-    if (err)
-      __rfm12_generic_spi_completion_handler((void*)spi_msg);
-    return err;
+   
     
 }
 
@@ -663,7 +554,7 @@ static int __init RFM_init(void)
       return status; 
     }
     /*Initialize the RFM12*/
-//    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
+    Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
 
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
