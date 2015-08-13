@@ -47,10 +47,7 @@ uint32_t seqNum;                            // encrypted send sequence number
 uint32_t cryptKey[4];                       // encryption key to use
 long rf12_seq;                              // seq number of encrypted packet (or -1)
 
-
 static struct workqueue_struct *wq = 0;
-static DECLARE_DELAYED_WORK(RFM12_work,RFM12_work_handler);
-static unsigned long onesec;
 
 
 struct spi_device *spi_device;
@@ -79,6 +76,8 @@ static int input_irqs[] = { -1 };
 
 unsigned long time_interrupt = 0;
 unsigned long time_work = 0;
+
+static DECLARE_WORK(RFM12_work,RFM12_work_handler);
 
 static void RFM12_work_handler(struct work_struct *w){
         
@@ -164,8 +163,7 @@ static irqreturn_t input_ISR (int irq, void *data)
         printk(KERN_INFO"IRQ called.\n");
 #endif
         time_interrupt = jiffies;
-        onesec = msecs_to_jiffies(1000);
-	queue_delayed_work(wq, &RFM12_work, onesec);
+	queue_work(wq, &RFM12_work);
         
 	return IRQ_HANDLED;
 }
