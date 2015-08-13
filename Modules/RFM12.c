@@ -7,6 +7,7 @@
 #include <linux/miscdevice.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
+#include <linux/workqueue.h>
 #include <linux/uaccess.h>
 #include "RFM12_config.h"
 #include "RFM12.h"
@@ -23,7 +24,8 @@ uint16_t writeCmd(uint16_t cmd);
 uint16_t xfer(uint16_t cmd);
 uint16_t crc16_update(uint16_t crc, uint8_t data);
 struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf);
-static void RFM12_tasklet_handler(unsigned long );
+
+static void RFM12_work_handler(struct work_struct *w);
 /************RFM12 Variables *************************************************/
 u8 useEncryption = 0;
 enum {
@@ -43,6 +45,12 @@ volatile uint16_t rf12_crc;                 // running crc value
 uint32_t seqNum;                            // encrypted send sequence number
 uint32_t cryptKey[4];                       // encryption key to use
 long rf12_seq;                              // seq number of encrypted packet (or -1)
+
+
+static struct workqueue_struct *wq = 0;
+static DECLARE_DELAYED_WORK(RFM12_work,RFM12_work_handler);
+static unsigned long onesec;
+
 
 struct spi_device *spi_device;
 
@@ -69,12 +77,12 @@ static struct gpio input[] = {
 static int input_irqs[] = { -1 };
 
 
-static void RFM12_tasklet_handler(unsigned long args){
+static void RFM12_work_handler(struct work_struct *w){
         
         printk(KERN_INFO "%s\n", __func__);
 
-	printk("Tasklet started\n");
-	struct spi_transfer tr1;
+	printk("Work Queue is working\n");
+/*	struct spi_transfer tr1;
 	struct spi_message msg;
 	u8 tx_buf[26];
 	int err;
@@ -90,8 +98,8 @@ static void RFM12_tasklet_handler(unsigned long args){
 	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
 	}
     
-        
-	printk("Tasklet ended\n");	
+*/        
+	printk("Work Queue ended\n");	
 /*  
   //	xfer(0x0000);
 	printk(KERN_INFO"rxstate = %d.\n",rxstate);
@@ -144,17 +152,15 @@ static void RFM12_tasklet_handler(unsigned long args){
   */
 	  
 }
-
-DECLARE_TASKLET(RFM12_tasklet, RFM12_tasklet_handler, 0);
-
 unsigned long flags;
 static irqreturn_t input_ISR (int irq, void *data)
 {
 #ifdef DEBUG
         printk(KERN_INFO"IRQ called.\n");
 #endif
-	tasklet_schedule(&RFM12_tasklet);
-
+        onesec = msecs_to_jiffies(1000);
+	queue_delayed_work(wq, &RFM12_work, onesec);
+        
 	return IRQ_HANDLED;
 }
 
@@ -197,7 +203,14 @@ static int init_Gpio(void){
       printk(KERN_ERR "Unable to request IRQ: %d\n", ret);
       goto fail2;
     }
- /***************DEBUG ledstatus  */
+    /*Create Work Quue*/
+    
+    wq = create_singlethread_workqueue("RFM12mod");
+    if (!wq){
+        printk(KERN_ERR "Unable to request Work Queue \n");
+        goto fail2;
+    }
+/***************DEBUG ledstatus  */
     ledstatus = 1;
 /*Only when On LED is avaiable it can be set to indicate the driver is working*/ 
 #ifdef ON_LED_ENABLE
@@ -577,6 +590,11 @@ static void __exit RFM_exit(void)
     /* unregister */
     gpio_free_array(leds,ARRAY_SIZE(leds));
     gpio_free_array(input, ARRAY_SIZE(input));
+    /*Free Work Queue*/
+    if (wq){
+//        cancel_delayed_work_sync(wq);
+        destroy_workqueue(wq);
+    }
     printk(KERN_INFO "RFM12 Successfully unloaded!\n");
 }
 
