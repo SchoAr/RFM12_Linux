@@ -9,6 +9,7 @@
 #include <linux/fs.h>
 #include <linux/workqueue.h>
 #include <linux/uaccess.h>
+#include <linux/jiffies.h>
 #include "RFM12_config.h"
 #include "RFM12.h"
 
@@ -76,12 +77,16 @@ static struct gpio input[] = {
 /* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
 
+unsigned long time_interrupt = 0;
+unsigned long time_work = 0;
 
 static void RFM12_work_handler(struct work_struct *w){
         
-        printk(KERN_INFO "%s\n", __func__);
-
+        time_work = jiffies;
 	printk("Work Queue is working\n");
+        printk("Time Interrupt = %d\n",time_interrupt);
+        printk("Time work = %d\n",time_work);
+        printk("Time Delay for working = %d\n",(int)(time_work-time_interrupt));
 /*	struct spi_transfer tr1;
 	struct spi_message msg;
 	u8 tx_buf[26];
@@ -158,6 +163,7 @@ static irqreturn_t input_ISR (int irq, void *data)
 #ifdef DEBUG
         printk(KERN_INFO"IRQ called.\n");
 #endif
+        time_interrupt = jiffies;
         onesec = msecs_to_jiffies(1000);
 	queue_delayed_work(wq, &RFM12_work, onesec);
         
