@@ -69,7 +69,7 @@ static struct gpio leds[] = {
 
 /*Define for the Inputs*/ 
 static struct gpio input[] = {
-    { INPUTPIN, GPIOF_IN, "INPUT" },
+    { IRQ_PIN, GPIOF_IN, "INPUT" },
 };
 /* Defines for the Interrupt */
 static int input_irqs[] = { -1 };
@@ -80,35 +80,16 @@ unsigned long time_work = 0;
 static DECLARE_WORK(RFM12_work,RFM12_work_handler);
 
 static void RFM12_work_handler(struct work_struct *w){
-        
-        time_work = jiffies;
-	printk("Work Queue is working\n");
-        printk("Time Interrupt = %d\n",time_interrupt);
-        printk("Time work = %d\n",time_work);
-        printk("Time Delay for working = %d\n",(int)(time_work-time_interrupt));
-/*	struct spi_transfer tr1;
-	struct spi_message msg;
-	u8 tx_buf[26];
-	int err;
-   
+        printk("Work Queue is working\n");
+//        time_work = jiffies;
+//        printk("Time Interrupt = %d\n",time_interrupt);
+//        printk("Time work = %d\n",time_work);
+//        printk("Time Delay for working = %d\n",(int)(time_work-time_interrupt));
+//	u8 tx_buf[26];         
+	
+        xfer(0x0000);
 
-	spi_message_init(&msg);	
-	
-	tr1 = rfm12_make_spi_transfer(0x0000,tx_buf,NULL);    // initial SPI transfer added to 
-        spi_message_add_tail(&tr1, &msg);
-	
-	err = spi_sync(spi_device, &msg);
-	if (err){
-	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
-	}
-    
-*/        
-	printk("Work Queue ended\n");	
-/*  
-  //	xfer(0x0000);
-	printk(KERN_INFO"rxstate = %d.\n",rxstate);
 	if (rxstate == TXRECV) {
-		printk(KERN_INFO"TXRECV will not be working!!!!!!!!!!!.\n");
 		uint8_t in = xfer(RF_RX_FIFO_READ);
 
 		if (rxfill == 0 && networkID != 0)
@@ -121,7 +102,7 @@ static void RFM12_work_handler(struct work_struct *w){
 		xfer(RF_IDLE_MODE);
 	} else {
 		uint8_t out;
-		printk(KERN_INFO"other state.\n");
+
 		if (rxstate < 0) {
 			uint8_t pos = 4 + rf12_len + rxstate++;
 			out = rf12_buf[pos];
@@ -149,12 +130,9 @@ static void RFM12_work_handler(struct work_struct *w){
 				out = 0xAA;
 			}
 		}
-		printk(KERN_INFO"send parameter = %x.\n",out);
 		xfer(RF_TXREG_WRITE + out);
 	}
-	printk(KERN_INFO"Returning from Interrupt\n");
-  */
-	  
+        printk("Work Queue ended\n");	  
 }
 unsigned long flags;
 static irqreturn_t input_ISR (int irq, void *data)
@@ -331,14 +309,30 @@ static int init_Spi(void){
 /*************Send Receive SPi***********/
 
 
-
 uint16_t xfer(uint16_t cmd) {
-   
+    int err;
+    printk(KERN_INFO "--------------XFER called \n"); 
+    spi_message_init(&msg);
+
+    tx_buff[0] = cmd >> 8;
+    tx_buff[1] = cmd & 0xFF;
     
+    transfer.tx_buf = tx_buff;
+    transfer.rx_buf = rx_buff;
+    transfer.cs_change = 1;
+    transfer.len = 2;
+    
+    spi_message_add_tail(&transfer, &msg);
+    
+    err = spi_sync(spi_device, &msg);
+    
+    if (err != 0){
+	printk(KERN_INFO "Error in xfer function \n"); 
+    }
+    return  (rx_buff[0]<<8) | rx_buff[1];
 }
 
-struct spi_transfer
-rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf)
+struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf)
 {
     struct spi_transfer tr = {
       .tx_buf = tx_buf,
@@ -356,7 +350,6 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
 {
 	printk(KERN_INFO "Read is called !\n");
-	//xfer(0xFF00);	
 	return simple_read_from_buffer(buf, count, ppos, id, strlen(id));
 }
 
@@ -398,7 +391,7 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	spi_message_init(&msg);	
 	
 	tr1 = rfm12_make_spi_transfer(0x0000,tx_buf,NULL);    // initial SPI transfer added to avoid power-up problem
-//	tr1.cs_change = 1;
+	tr1.cs_change = 1;
 	spi_message_add_tail(&tr1, &msg);
 	
 	err = spi_sync(spi_device, &msg);
@@ -410,95 +403,95 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	
 	
 	tr1 = rfm12_make_spi_transfer(RF_SLEEP_MODE,tx_buf+2,NULL);            // DC (disable clk pin), enable lbd
-//	tr1.cs_change = 1;
+	tr1.cs_change = 1;
 	spi_message_add_tail(&tr1, &msg);		 
 	
 	tr2 = rfm12_make_spi_transfer(RF_TXREG_WRITE,tx_buf+4,NULL);           // in case we're still in OOK mode
-//	tr2.cs_change = 1;
+	tr2.cs_change = 1;
 	spi_message_add_tail(&tr2, &msg);		  // wait until RFM12B is out of power-up reset, this takes several *seconds*
  
 	err = spi_sync(spi_device, &msg);
 	if (err){
 	      printk(KERN_INFO "Error sending 2 SPI Message %d!\n",err);
 	}
-	msleep(100);
+//	msleep(100);
 	/**************/
 	spi_message_init(&msg);
 	
 	
 	tr1 = rfm12_make_spi_transfer(0x80C7 | (freqBand << 4),tx_buf+0,NULL); // EL (ena TX), EF (ena RX FIFO), 12.0pF
-//	tr1.cs_change = 1;
+	tr1.cs_change = 1;
 	spi_message_add_tail(&tr1, &msg);
 	
 	tr2 = rfm12_make_spi_transfer(0xA640,tx_buf+2,NULL); // Frequency is exactly 434/868/915MHz (whatever freqBand is)
-//	tr2.cs_change = 1;
+	tr2.cs_change = 1;
 	spi_message_add_tail(&tr2, &msg);
 	
 	tr3 = rfm12_make_spi_transfer(0xC600 + airKbps,tx_buf+4,NULL);   //Air transmission baud rate: 0x08= ~38.31Kbps
-//	tr3.cs_change = 1;
+	tr3.cs_change = 1;
 	spi_message_add_tail(&tr3, &msg);
 	
 	tr4 = rfm12_make_spi_transfer(0x94A2,tx_buf+6,NULL);                   // VDI,FAST,134kHz,0dBm,-91dBm
-//	tr4.cs_change = 1;
+	tr4.cs_change = 1;
 	spi_message_add_tail(&tr4, &msg);
 	
 	tr5 = rfm12_make_spi_transfer(0xC2AC,tx_buf+8,NULL);                   // AL,!ml,DIG,DQD4
-//	tr5.cs_change = 1;
+	tr5.cs_change = 1;
 	spi_message_add_tail(&tr5, &msg);
 	
 	if (networkID != 0) {
 		tr6 = rfm12_make_spi_transfer(0xCA83,tx_buf+10,NULL);               // FIFO8,2-SYNC,!ff,DR
-//		tr6.cs_change = 1;
+		tr6.cs_change = 1;
 		spi_message_add_tail(&tr6, &msg);
 		
 		tr7 = rfm12_make_spi_transfer(0xCE00 | networkID,tx_buf+12,NULL);   // SYNC=2DXX
-//		tr7.cs_change = 1;
+		tr7.cs_change = 1;
 		spi_message_add_tail(&tr7, &msg);
 	} else {
 		tr6 = rfm12_make_spi_transfer(0xCA8B,tx_buf+10,NULL);               // FIFO8,1-SYNC,!ff,DR
-//		tr6.cs_change = 1;
+		tr6.cs_change = 1;
 		spi_message_add_tail(&tr6, &msg);
 		
 		tr7 = rfm12_make_spi_transfer(0xCE2D,tx_buf+12,NULL);               // SYNC=2D
-//		tr7.cs_change = 1;
+		tr7.cs_change = 1;
 		spi_message_add_tail(&tr7, &msg);
 	}
 
 	tr8 = rfm12_make_spi_transfer(0xC483,tx_buf+14,NULL);                   // @PWR,NO RSTRIC,!st,!fi,OE,EN
-//	tr8.cs_change = 1;
+	tr8.cs_change = 1;
 	spi_message_add_tail(&tr8, &msg);
 	
 	tr9 = rfm12_make_spi_transfer(0x9850 | (txPower > 7 ? 7 : txPower),tx_buf+16,NULL); // !mp,90kHz,MAX OUT
-//	tr9.cs_change = 1;
+	tr9.cs_change = 1;
 	spi_message_add_tail(&tr9, &msg);
 
 	tr10 = rfm12_make_spi_transfer(0xCC77,tx_buf+18,NULL);                   // OB1, OB0, LPX, ddy, DDIT, BW0
-//	tr10.cs_change = 1;
+	tr10.cs_change = 1;
 	spi_message_add_tail(&tr10, &msg);
 	
 	tr11 = rfm12_make_spi_transfer(0xE000,tx_buf+20,NULL);                   // NOT USE
-//	tr11.cs_change = 1;
+	tr11.cs_change = 1;
 	spi_message_add_tail(&tr11, &msg);
 	
 	tr12 = rfm12_make_spi_transfer(0xC800,tx_buf+22,NULL);                   // NOT USE
-//	tr12.cs_change = 1;
+	tr12.cs_change = 1;
 	spi_message_add_tail(&tr12, &msg);
 	
 	tr13 = rfm12_make_spi_transfer(0xC049,tx_buf+24,NULL);                   // 1.66MHz,3.1V
-//	tr13.cs_change = 1;
+	tr13.cs_change = 1;
 	spi_message_add_tail(&tr13, &msg);
 	
 	err = spi_sync(spi_device, &msg);
 	if (err){
 	      printk(KERN_INFO "Error sending second SPI Message !\n");
 	}
-	 if (0 == err) {
-	    spi_message_init(&msg);
+/*	 if (0 == err) {
+            spi_message_init(&msg);
 	    tr1 = rfm12_make_spi_transfer(0x0000, tx_buf+0, NULL);
 	    spi_message_add_tail(&tr1, &msg);
 	    err = spi_sync(spi_device, &msg);
 	}
-	rxstate = TXIDLE;
+*/	rxstate = TXIDLE;
 }
 uint16_t crc16_update(uint16_t crc, uint8_t data) {
 	int i;
@@ -572,6 +565,9 @@ static int __init RFM_init(void)
     }
     /*Initialize the RFM12*/
     Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
+    
+ //   msleep(3000);
+//    SendStart(SERVER_MBED_NODE, "hello",5, 0,0);
 
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
@@ -596,7 +592,7 @@ static void __exit RFM_exit(void)
     gpio_free_array(input, ARRAY_SIZE(input));
     /*Free Work Queue*/
     if (wq){
-//        cancel_delayed_work_sync(wq);
+//        cancel_work_sync(RFM12_work);
         destroy_workqueue(wq);
     }
     printk(KERN_INFO "RFM12 Successfully unloaded!\n");

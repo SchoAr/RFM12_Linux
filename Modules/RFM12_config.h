@@ -16,10 +16,10 @@
 #define RX_LED_ENABLE 1
 #define TX_LED_ENABLE 1
 /*********************************/
-#define IRQ_PIN 0 	//MIO0
-#define RX_LED 9
-#define TX_LED 14
-#define ON_LED 15
+#define IRQ_PIN  0 	//MIO0
+#define RX_LED   9
+#define TX_LED   14
+#define ON_LED   15
 #define INPUTPIN 51
 /********************************/
 #define SPI_BUS 32766
