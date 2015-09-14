@@ -211,7 +211,6 @@ static int init_Gpio(void){
 struct spi_master *spi_master;
 struct spi_message msg;
 spinlock_t spi_lock;
-
 static int RFM12_probe(struct spi_device *spi_devicef)
 {
     spi_device = spi_devicef;
@@ -222,7 +221,7 @@ static int RFM12_probe(struct spi_device *spi_devicef)
     spi_device = NULL;
     return 0;
 }
-
+ 
 static struct spi_driver RFM12_driver = {
     .driver = {
       .name = "RFM12_spi",
@@ -283,7 +282,7 @@ static int init_Spi(void){
 	      printk(KERN_ALERT
 	      "Driver [%s] already registered for %s\n",
 	      pdev->driver->name, buff);
-	      status = -1;
+ 	      status = -1;
 	  } 
 	printk(KERN_INFO "Returning !\n");  
 	return status;
@@ -319,11 +318,9 @@ uint16_t xfer(uint16_t cmd) {
     
     transfer.tx_buf = tx_buff;
     transfer.rx_buf = rx_buff;
-    transfer.cs_change = 1;
     transfer.len = 2;
     
     spi_message_add_tail(&transfer, &msg);
-    
     err = spi_sync(spi_device, &msg);
     
     if (err != 0){
@@ -379,9 +376,9 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 		uint8_t txPower, uint8_t airKbps) {
 	
 	struct spi_transfer tr1, tr2, tr3, tr4, tr5, tr6, tr7, tr8, tr9,
-	tr10, tr11, tr12, tr13;
+	tr10, tr11, tr12, tr13, tr14,tr15,tr16;
 	struct spi_message msg;
-	u8 tx_buf[26];
+	u8 tx_buf[32];
 	int err;
     
 	nodeID = nodeid;
@@ -394,92 +391,94 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	tr1.cs_change = 1;
 	spi_message_add_tail(&tr1, &msg);
 	
-	err = spi_sync(spi_device, &msg);
-	if (err){
-	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
-	}
-	msleep(50);
-	spi_message_init(&msg);	
+//	err = spi_sync(spi_device, &msg);
+//	if (err){
+//	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
+//	}
+//	msleep(50);
+//	spi_message_init(&msg);	
 	
 	
-	tr1 = rfm12_make_spi_transfer(RF_SLEEP_MODE,tx_buf+2,NULL);            // DC (disable clk pin), enable lbd
-	tr1.cs_change = 1;
-	spi_message_add_tail(&tr1, &msg);		 
-	
-	tr2 = rfm12_make_spi_transfer(RF_TXREG_WRITE,tx_buf+4,NULL);           // in case we're still in OOK mode
+	tr2 = rfm12_make_spi_transfer(RF_SLEEP_MODE,tx_buf+2,NULL);            // DC (disable clk pin), enable lbd
 	tr2.cs_change = 1;
-	spi_message_add_tail(&tr2, &msg);		  // wait until RFM12B is out of power-up reset, this takes several *seconds*
+	spi_message_add_tail(&tr2, &msg);		 
+	
+	tr3 = rfm12_make_spi_transfer(RF_TXREG_WRITE,tx_buf+4,NULL);           // in case we're still in OOK mode
+	tr3.cs_change = 1;
+	spi_message_add_tail(&tr3, &msg);		  // wait until RFM12B is out of power-up reset, this takes several *seconds*
  
-	err = spi_sync(spi_device, &msg);
-	if (err){
-	      printk(KERN_INFO "Error sending 2 SPI Message %d!\n",err);
-	}
+//	err = spi_sync(spi_device, &msg);
+//	if (err){
+//	      printk(KERN_INFO "Error sending 2 SPI Message %d!\n",err);
+//	}
 //	msleep(100);
 	/**************/
-	spi_message_init(&msg);
+//	spi_message_init(&msg);
 	
 	
-	tr1 = rfm12_make_spi_transfer(0x80C7 | (freqBand << 4),tx_buf+0,NULL); // EL (ena TX), EF (ena RX FIFO), 12.0pF
-	tr1.cs_change = 1;
-	spi_message_add_tail(&tr1, &msg);
-	
-	tr2 = rfm12_make_spi_transfer(0xA640,tx_buf+2,NULL); // Frequency is exactly 434/868/915MHz (whatever freqBand is)
-	tr2.cs_change = 1;
-	spi_message_add_tail(&tr2, &msg);
-	
-	tr3 = rfm12_make_spi_transfer(0xC600 + airKbps,tx_buf+4,NULL);   //Air transmission baud rate: 0x08= ~38.31Kbps
-	tr3.cs_change = 1;
-	spi_message_add_tail(&tr3, &msg);
-	
-	tr4 = rfm12_make_spi_transfer(0x94A2,tx_buf+6,NULL);                   // VDI,FAST,134kHz,0dBm,-91dBm
+	tr4 = rfm12_make_spi_transfer(0x80C7 | (freqBand << 4),tx_buf+6,NULL); // EL (ena TX), EF (ena RX FIFO), 12.0pF
 	tr4.cs_change = 1;
 	spi_message_add_tail(&tr4, &msg);
 	
-	tr5 = rfm12_make_spi_transfer(0xC2AC,tx_buf+8,NULL);                   // AL,!ml,DIG,DQD4
+	tr5 = rfm12_make_spi_transfer(0xA640,tx_buf+8,NULL); // Frequency is exactly 434/868/915MHz (whatever freqBand is)
 	tr5.cs_change = 1;
 	spi_message_add_tail(&tr5, &msg);
 	
-	if (networkID != 0) {
-		tr6 = rfm12_make_spi_transfer(0xCA83,tx_buf+10,NULL);               // FIFO8,2-SYNC,!ff,DR
-		tr6.cs_change = 1;
-		spi_message_add_tail(&tr6, &msg);
-		
-		tr7 = rfm12_make_spi_transfer(0xCE00 | networkID,tx_buf+12,NULL);   // SYNC=2DXX
-		tr7.cs_change = 1;
-		spi_message_add_tail(&tr7, &msg);
-	} else {
-		tr6 = rfm12_make_spi_transfer(0xCA8B,tx_buf+10,NULL);               // FIFO8,1-SYNC,!ff,DR
-		tr6.cs_change = 1;
-		spi_message_add_tail(&tr6, &msg);
-		
-		tr7 = rfm12_make_spi_transfer(0xCE2D,tx_buf+12,NULL);               // SYNC=2D
-		tr7.cs_change = 1;
-		spi_message_add_tail(&tr7, &msg);
-	}
-
-	tr8 = rfm12_make_spi_transfer(0xC483,tx_buf+14,NULL);                   // @PWR,NO RSTRIC,!st,!fi,OE,EN
+	tr6 = rfm12_make_spi_transfer(0xC600 + airKbps,tx_buf+10,NULL);   //Air transmission baud rate: 0x08= ~38.31Kbps
+	tr6.cs_change = 1;
+	spi_message_add_tail(&tr6, &msg);
+	
+	tr7 = rfm12_make_spi_transfer(0x94A2,tx_buf+12,NULL);                   // VDI,FAST,134kHz,0dBm,-91dBm
+	tr7.cs_change = 1;
+	spi_message_add_tail(&tr7, &msg);
+	
+	tr8 = rfm12_make_spi_transfer(0xC2AC,tx_buf+14,NULL);                   // AL,!ml,DIG,DQD4
 	tr8.cs_change = 1;
 	spi_message_add_tail(&tr8, &msg);
 	
-	tr9 = rfm12_make_spi_transfer(0x9850 | (txPower > 7 ? 7 : txPower),tx_buf+16,NULL); // !mp,90kHz,MAX OUT
-	tr9.cs_change = 1;
-	spi_message_add_tail(&tr9, &msg);
+	if (networkID != 0) {
+		tr9 = rfm12_make_spi_transfer(0xCA83,tx_buf+16,NULL);               // FIFO8,2-SYNC,!ff,DR
+		tr9.cs_change = 1;
+		spi_message_add_tail(&tr9, &msg);
+		
+		tr10 = rfm12_make_spi_transfer(0xCE00 | networkID,tx_buf+18,NULL);   // SYNC=2DXX
+		tr10.cs_change = 1;
+		spi_message_add_tail(&tr10, &msg);
+	} else {
+		tr9 = rfm12_make_spi_transfer(0xCA8B,tx_buf+16,NULL);               // FIFO8,1-SYNC,!ff,DR
+		tr9.cs_change = 1;
+		spi_message_add_tail(&tr9, &msg);
+		
+		tr10 = rfm12_make_spi_transfer(0xCE2D,tx_buf+18,NULL);               // SYNC=2D
+		tr10.cs_change = 1;
+		spi_message_add_tail(&tr10, &msg);
+	}
 
-	tr10 = rfm12_make_spi_transfer(0xCC77,tx_buf+18,NULL);                   // OB1, OB0, LPX, ddy, DDIT, BW0
-	tr10.cs_change = 1;
-	spi_message_add_tail(&tr10, &msg);
-	
-	tr11 = rfm12_make_spi_transfer(0xE000,tx_buf+20,NULL);                   // NOT USE
+	tr11 = rfm12_make_spi_transfer(0xC483,tx_buf+20,NULL);                   // @PWR,NO RSTRIC,!st,!fi,OE,EN
 	tr11.cs_change = 1;
 	spi_message_add_tail(&tr11, &msg);
 	
-	tr12 = rfm12_make_spi_transfer(0xC800,tx_buf+22,NULL);                   // NOT USE
+	tr12 = rfm12_make_spi_transfer(0x9850 | (txPower > 7 ? 7 : txPower),tx_buf+22,NULL); // !mp,90kHz,MAX OUT
 	tr12.cs_change = 1;
 	spi_message_add_tail(&tr12, &msg);
-	
-	tr13 = rfm12_make_spi_transfer(0xC049,tx_buf+24,NULL);                   // 1.66MHz,3.1V
+
+	tr13 = rfm12_make_spi_transfer(0xCC77,tx_buf+24,NULL);                   // OB1, OB0, LPX, ddy, DDIT, BW0
 	tr13.cs_change = 1;
 	spi_message_add_tail(&tr13, &msg);
+	
+	tr14 = rfm12_make_spi_transfer(0xE000,tx_buf+26,NULL);                   // NOT USE
+	tr14.cs_change = 1;
+	spi_message_add_tail(&tr14, &msg);
+	
+	tr15 = rfm12_make_spi_transfer(0xC800,tx_buf+28,NULL);                   // NOT USE
+	tr15.cs_change = 1;
+	spi_message_add_tail(&tr15, &msg);
+	
+	tr16 = rfm12_make_spi_transfer(0xC049,tx_buf+30,NULL);                   // 1.66MHz,3.1V
+/*
+* Here no CS  Change cause it is the last message 
+*/
+	spi_message_add_tail(&tr16, &msg);
 	
 	err = spi_sync(spi_device, &msg);
 	if (err){
@@ -565,9 +564,6 @@ static int __init RFM_init(void)
     }
     /*Initialize the RFM12*/
     Initialize(CLIENT_MBED_NODE, RF12_433MHZ, 212,0,0x08);
-    
- //   msleep(3000);
-//    SendStart(SERVER_MBED_NODE, "hello",5, 0,0);
 
     printk(KERN_INFO "RFM12 Module Successfully Initialized !\n");
     return 0;
