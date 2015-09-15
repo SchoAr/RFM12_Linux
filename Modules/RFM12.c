@@ -81,13 +81,6 @@ static DECLARE_WORK(RFM12_work,RFM12_work_handler);
 
 static void RFM12_work_handler(struct work_struct *w){
         printk("Work Queue is working\n");
-//        time_work = jiffies;
-//        printk("Time Interrupt = %d\n",time_interrupt);
-//        printk("Time work = %d\n",time_work);
-//        printk("Time Delay for working = %d\n",(int)(time_work-time_interrupt));
-//	u8 tx_buf[26];         
-	
-        xfer(0x0000);
 
 	if (rxstate == TXRECV) {
 		uint8_t in = xfer(RF_RX_FIFO_READ);
@@ -99,10 +92,9 @@ static void RFM12_work_handler(struct work_struct *w){
 		rf12_crc = crc16_update(rf12_crc, in);
 
 		if (rxfill >= rf12_len+ 6 || rxfill >= RF_MAX)
-		xfer(RF_IDLE_MODE);
+			xfer(RF_IDLE_MODE);
 	} else {
 		uint8_t out;
-
 		if (rxstate < 0) {
 			uint8_t pos = 4 + rf12_len + rxstate++;
 			out = rf12_buf[pos];
@@ -123,14 +115,19 @@ static void RFM12_work_handler(struct work_struct *w){
 				out = rf12_crc >> 8;
 				break;
 				case TXDONE:
-				xfer(RF_IDLE_MODE); // fall through
+				xfer2(RF_IDLE_MODE); // fall through
+				/**xfer out****/
 				out = 0xAA;
+				xfer(RF_TXREG_WRITE + out);
 				break;
 				default:
 				out = 0xAA;
 			}
 		}
-		xfer(RF_TXREG_WRITE + out);
+		/*
+		* Here a other xfer is needed which is sending 0x0000 before
+		*/
+		xfer2(RF_TXREG_WRITE + out);
 	}
         printk("Work Queue ended\n");	  
 }
@@ -142,11 +139,8 @@ static irqreturn_t input_ISR (int irq, void *data)
 #endif
         time_interrupt = jiffies;
 	queue_work(wq, &RFM12_work);
-        
 	return IRQ_HANDLED;
 }
-
-
 
 static int init_Gpio(void){
     
@@ -186,7 +180,6 @@ static int init_Gpio(void){
       goto fail2;
     }
     /*Create Work Quue*/
-    
     wq = create_singlethread_workqueue("RFM12mod");
     if (!wq){
         printk(KERN_ERR "Unable to request Work Queue \n");
@@ -307,7 +300,6 @@ static int init_Spi(void){
 
 /*************Send Receive SPi***********/
 
-
 uint16_t xfer(uint16_t cmd) {
     int err;
     printk(KERN_INFO "--------------XFER called \n"); 
@@ -342,6 +334,7 @@ struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf
 }
     
 /***************File Operations************************/
+
 static const char *id = "Hello World";
 static ssize_t read(struct file *file, char __user *buf, size_t count,
 		    loff_t *ppos)
@@ -372,6 +365,7 @@ static struct miscdevice eud_dev = {
 };
 
 /***********RFM12 Operations****************************************/
+
 void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 		uint8_t txPower, uint8_t airKbps) {
 	
@@ -391,14 +385,6 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	tr1.cs_change = 1;
 	spi_message_add_tail(&tr1, &msg);
 	
-//	err = spi_sync(spi_device, &msg);
-//	if (err){
-//	      printk(KERN_INFO "Error sending first SPI Message %d!\n",err);
-//	}
-//	msleep(50);
-//	spi_message_init(&msg);	
-	
-	
 	tr2 = rfm12_make_spi_transfer(RF_SLEEP_MODE,tx_buf+2,NULL);            // DC (disable clk pin), enable lbd
 	tr2.cs_change = 1;
 	spi_message_add_tail(&tr2, &msg);		 
@@ -406,15 +392,6 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	tr3 = rfm12_make_spi_transfer(RF_TXREG_WRITE,tx_buf+4,NULL);           // in case we're still in OOK mode
 	tr3.cs_change = 1;
 	spi_message_add_tail(&tr3, &msg);		  // wait until RFM12B is out of power-up reset, this takes several *seconds*
- 
-//	err = spi_sync(spi_device, &msg);
-//	if (err){
-//	      printk(KERN_INFO "Error sending 2 SPI Message %d!\n",err);
-//	}
-//	msleep(100);
-	/**************/
-//	spi_message_init(&msg);
-	
 	
 	tr4 = rfm12_make_spi_transfer(0x80C7 | (freqBand << 4),tx_buf+6,NULL); // EL (ena TX), EF (ena RX FIFO), 12.0pF
 	tr4.cs_change = 1;
@@ -475,22 +452,16 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	spi_message_add_tail(&tr15, &msg);
 	
 	tr16 = rfm12_make_spi_transfer(0xC049,tx_buf+30,NULL);                   // 1.66MHz,3.1V
-/*
-* Here no CS  Change cause it is the last message 
-*/
+	/*
+	* Here no CS  Change cause it is the last message 
+	*/
 	spi_message_add_tail(&tr16, &msg);
 	
 	err = spi_sync(spi_device, &msg);
 	if (err){
 	      printk(KERN_INFO "Error sending second SPI Message !\n");
 	}
-/*	 if (0 == err) {
-            spi_message_init(&msg);
-	    tr1 = rfm12_make_spi_transfer(0x0000, tx_buf+0, NULL);
-	    spi_message_add_tail(&tr1, &msg);
-	    err = spi_sync(spi_device, &msg);
-	}
-*/	rxstate = TXIDLE;
+	rxstate = TXIDLE;
 }
 uint16_t crc16_update(uint16_t crc, uint8_t data) {
 	int i;
@@ -502,7 +473,6 @@ uint16_t crc16_update(uint16_t crc, uint8_t data) {
 		else
 			crc = (crc >> 1);
 	}
-
 	return crc;
 }
 
@@ -537,6 +507,7 @@ static void SendStart(uint8_t toNodeID, const void* sendBuf, uint8_t sendLen,
 }
 
 /***********Init and Deinit************/
+
 static int __init RFM_init(void)
 {
     int status = 0;
