@@ -482,6 +482,25 @@ void Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 	if (err){
 	      printk(KERN_INFO "Error sending second SPI Message !\n");
 	}
+	
+        
+        /*
+         * If the interrupt line is low make transfer until it gets high
+         */      
+        gpio_direction_input(input[0].gpio);
+        printk(KERN_INFO "\n input: %x\n",gpio_get_value(input[0].gpio));
+        
+        while(gpio_get_value(input[0].gpio) == 0){
+            xfer(0x0000);
+            printk(KERN_INFO ".\n");
+            i++;
+            if(i>10){
+                printk(KERN_INFO "TIMEOUT RFM12 Present ? \n");
+                goto TIMEOUT;
+            }
+        }
+        TIMEOUT:   
+        printk(KERN_INFO "\n input: %x\n",gpio_get_value(input[0].gpio));        
 	rxstate = TXIDLE;
 }
 uint16_t crc16_update(uint16_t crc, uint8_t data) {
