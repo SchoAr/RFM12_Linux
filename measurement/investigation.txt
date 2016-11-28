@@ -1,0 +1,9 @@
+-> the nCS is in the correct version bevore the communication is started high 
+	in the wrong version it gets high shortly bevore the communication starts before it is low 
+
+-> in the wrong transmission 16 clocks are submitted ad once in the correct work the data is transmitted 
+	in two times 8 clocks 
+	
+-> the received MISO values for the second command appear to dont match the zynq receives a other value 		than the right system (might be caused by problem 2)
+
+-> the second command has 3 transmission pakages not 2 in the end another command with 0x0000 is 			transmitted 
