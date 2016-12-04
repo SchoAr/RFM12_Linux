@@ -26,6 +26,7 @@ uint16_t xfer(uint16_t cmd);
 uint16_t xfer2(uint16_t cmd);
 uint16_t crc16_update(uint16_t crc, uint8_t data);
 struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf);
+struct spi_transfer rfm12_make_single_transfer(uint8_t cmd, u8* tx_buf, u8* rx_buf);
 
 static void RFM12_work_handler(struct work_struct *w);
 /************RFM12 Variables *************************************************/
@@ -321,7 +322,7 @@ uint16_t xfer(uint16_t cmd) {
 }
 
 uint16_t xfer2(uint16_t cmd){
-    struct spi_transfer t1,t2;
+    struct spi_transfer t1,t2,t3,t4;
     struct spi_message msg;
     uint8_t txmessage[4];
     int ret;
@@ -331,13 +332,23 @@ uint16_t xfer2(uint16_t cmd){
     */
 
     spi_message_init(&msg);
-    t1 = rfm12_make_spi_transfer(0x00,txmessage,NULL);
+    
+    t1 = rfm12_make_single_transfer(0x00,txmessage,NULL);
     t1.cs_change = 1;
     spi_message_add_tail(&t1,&msg);
 
-    t2 = rfm12_make_spi_transfer(cmd,txmessage + 2,NULL);
+    t2 = rfm12_make_single_transfer(0x00,txmessage+1,NULL);
+    t2.cs_change = 1;
     spi_message_add_tail(&t2,&msg);
-
+    
+    t3 = rfm12_make_single_transfer((cmd >> 8) & 0xff,txmessage+2,NULL);
+    t3.cs_change = 1;
+    spi_message_add_tail(&t3,&msg);
+    
+    t4 = rfm12_make_single_transfer(cmd  & 0xff,txmessage+3,NULL);
+    t4.cs_change = 1;
+    spi_message_add_tail(&t4,&msg);
+    
     ret =  spi_sync(spi_device, &msg);
     if(ret)
         printk(KERN_INFO "XFER 2 failed\n");
@@ -354,6 +365,19 @@ struct spi_transfer rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf
     tx_buf[1] = cmd & 0xff;
     return tr;
 }
+
+struct spi_transfer rfm12_make_single_transfer(uint8_t cmd, u8* tx_buf, u8* rx_buf)
+{
+    struct spi_transfer tr = {
+      .tx_buf = tx_buf,
+      .rx_buf = rx_buf,
+      .len    = 1,
+      .delay_usecs = 5,
+    };
+    tx_buf[0] = cmd & 0xff;
+    return tr;
+}
+
 
 /***************File Operations************************/
 

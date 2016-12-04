@@ -7,7 +7,7 @@ ifneq ($(KERNELRELEASE),)
 else
 	obj-m := RFM12.o
 	TARGET = 192.168.1.103
-	TARGET_DIR = /root
+	TARGET_DIR = /root/
 	KERNELDIR ?= ~/Driver_Development/Neuer_Ordner2/linux-xlnx
 	PWD := $(shell pwd)
 
