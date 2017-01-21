@@ -25,6 +25,10 @@
 #define SPI_BUS 32766
 #define SPI_BUS_CS0 0	
 #define SPI_BUS_SPEED 200000
+
+#define DATA_BUF_SIZE 512
+#define POWERON_RESET_WAIT_MILLIS   (5000)
+#define POWERON_RESET_WAIT_STEP     (20)
 /********************************/
 #define ACK_TIME                 15000        //R of ms to wait for an ack (usually between 600ms and 1300ms)
 #define CLIENT_MOTEINO_NODE          1
