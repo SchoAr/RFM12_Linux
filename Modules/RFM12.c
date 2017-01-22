@@ -17,54 +17,77 @@ MODULE_AUTHOR("Schoenlieb");
 MODULE_DESCRIPTION("A Char Driver for the RFM12 Radio Transceiver");
 MODULE_LICENSE("GPL");
 
-static irqreturn_t input_ISR (int irq, void *data);
+
 
 typedef enum _rfm12_state_t {
-   RFM12_STATE_NO_CHANGE,
-   RFM12_STATE_CONFIG,
-   RFM12_STATE_SLEEP,
-   RFM12_STATE_RECV,
-   RFM12_STATE_RECV_FINISH,
-   RFM12_STATE_SEND
+   RFM12_STATE_NO_CHANGE		= 0,
+   RFM12_STATE_CONFIG			= 1,
+   RFM12_STATE_SLEEP			= 2,
+   RFM12_STATE_IDLE			= 3,
+   RFM12_STATE_LISTEN			= 4,
+   RFM12_STATE_RECV			= 5,
+   RFM12_STATE_RECV_FINISH		= 6,
+   RFM12_STATE_SEND_PRE1	    	= 7,
+   RFM12_STATE_SEND_PRE2		= 8,
+   RFM12_STATE_SEND_PRE3		= 9,
+   RFM12_STATE_SEND_SYN1		= 10,
+   RFM12_STATE_SEND_SYN2	    	= 11,
+   RFM12_STATE_SEND			= 12,
+   RFM12_STATE_SEND_TAIL1		= 13,
+   RFM12_STATE_SEND_TAIL2		= 14,
+   RFM12_STATE_SEND_TAIL3		= 15
 } rfm12_state_t;
 
 struct rfm12_spi_message {
    struct spi_message   spi_msg;
-   struct spi_transfer  spi_transfers[2];
+   struct spi_transfer  spi_transfers[4];
    rfm12_state_t        spi_finish_state;
-   u8                   spi_tx[4], spi_rx[4];
+   u8                   spi_tx[8], spi_rx[8];
    void*                context;
    u8                   pos;
 };
 
 struct rfm12_data {
-	u16			irq;
-	
+	u16	 	 	irq;
+	int			irq_identifier;
+
 	dev_t			devt;
 	spinlock_t		rfm12_lock;
 	struct spi_device*	spi;
 	struct list_head	device_entry;
-	
+
 	u8                   	open;
-	rfm12_state_t       	state;
-	u8                   	irq_pin_val;
-	unsigned long        	bytes_recvd;
-	unsigned long        	bytes_sent;
-	unsigned long        	num_overflows;
+	u8			should_release;
+	rfm12_state_t        	state;
+	u8			group_id, band_id;
+	unsigned long        	bytes_recvd, pkts_recvd;
+	unsigned long        	bytes_sent, pkts_sent;
+	unsigned long        	num_recv_overflows, num_recv_timeouts, num_recv_crc16_fail;
+	unsigned long		num_send_underruns, num_send_timeouts;
 	u8*                  	in_buf, *in_buf_pos;
 	u8*                  	out_buf, *out_buf_pos;
 	u8*                  	in_cur_len_pos;
-	u8*                  	in_cur_end;
-	int                  	in_cur_num_bytes;
-	struct rfm12_spi_message spi_msgs[1];
+	u8*                  	in_cur_end, *out_cur_end;
+	u16			crc16, last_status;
+	int                  	in_cur_num_bytes, out_cur_num_bytes;
+	struct rfm12_spi_message spi_msgs[NUM_MAX_CONCURRENT_MSG];
 	u8                   	free_spi_msgs;
 	struct timer_list    	rxtx_watchdog;
 	u8                   	rxtx_watchdog_running;
+	struct timer_list	retry_sending_timer;
+	u8			retry_sending_running;
 };
+
+
+static irqreturn_t input_ISR (int irq, void *data);
+static int rfm12_send_generic_async_cmd( uint16_t* cmds,int num_cmds, uint16_t delay_usecs, void (*callback)(void*),rfm12_state_t finish_state);
+static int rfm12_finish_sending(struct rfm12_data* rfm12, int success);
+static void rfm12_send_spi_completion_handler(void *arg);
+static void rfm12_spi_completion_common(struct rfm12_spi_message* msg);
+
 
 struct spi_device *spi_device;
 static struct gpio input[] = { { IRQ_PIN, GPIOF_IN, "INPUT" },};
-
 static int input_irqs[] = { -1 };
 static struct gpio leds[] = {
     { ON_LED, GPIOF_OUT_INIT_HIGH, "ON" },
@@ -97,10 +120,229 @@ rfm12_make_spi_transfer(uint16_t cmd, u8* tx_buf, u8* rx_buf)
    return tr;
 }
 
+static int
+rfm12_write_tx_byte(struct rfm12_data* rfm12, u8 tx_byte)
+{
+	uint16_t cmds[2];
+	
+	cmds[0] = RF_READ_STATUS;
+	cmds[1] = RF_TXREG_WRITE | tx_byte;
+	
+	return rfm12_send_generic_async_cmd(cmds, 2,
+		WRITE_TX_WAIT, rfm12_send_spi_completion_handler,
+		RFM12_STATE_NO_CHANGE);
+}
+
 static irqreturn_t input_ISR (int irq, void *data)
 {
 	printk(KERN_INFO "IRQ called \n");
+	
+	struct rfm12_data *rfm12;
+	rfm12 = &dev_data;
+	
+	spin_lock(&rfm12->rfm12_lock);
+	
+	printk(KERN_INFO "state is = %d \n",rfm12->state);
+	
+
+	switch (rfm12->state) {
+	  case RFM12_STATE_LISTEN:
+	  case RFM12_STATE_RECV:
+		  printk(KERN_INFO "No receive state = %d \n",rfm12->state);
+//		 (void)rfm12_request_fifo_byte(rfm12);
+		 break;
+	  case RFM12_STATE_SEND_PRE1:
+	  case RFM12_STATE_SEND_PRE2:
+	  case RFM12_STATE_SEND_PRE3:
+	  case RFM12_STATE_SEND_TAIL1:
+	  case RFM12_STATE_SEND_TAIL2:
+	     (void)rfm12_write_tx_byte(rfm12, 0xAA);
+	     break;
+	  case RFM12_STATE_SEND_TAIL3: {
+		uint16_t cmd = RF_IDLE_MODE;
+	  	(void)rfm12_send_generic_async_cmd(&cmd, 1, 0,
+	  		NULL, RFM12_STATE_NO_CHANGE);
+	  	(void)rfm12_write_tx_byte(rfm12, 0xAA);
+	  	break;
+	  }
+	  case RFM12_STATE_SEND_SYN1:
+		 printk(KERN_INFO "RFM12_STATE_SEND_SYN1\n");
+	  	 (void)rfm12_write_tx_byte(rfm12, 0x2D);
+	  	 break;
+	  case RFM12_STATE_SEND_SYN2:
+		  printk(KERN_INFO "RFM12_STATE_SEND_SYN2\n");
+	  	 (void)rfm12_write_tx_byte(rfm12, rfm12->group_id);
+	  	 break;
+	  case RFM12_STATE_SEND:
+		printk(KERN_INFO "RFM12_STATE_SEND\n");
+	     (void)rfm12_write_tx_byte(rfm12, *rfm12->out_buf_pos++);
+	     break;
+	  default: {
+		  
+		  printk(KERN_INFO "irq status is fishy\n");
+		 uint16_t cmd = RF_READ_STATUS; 
+		 (void)rfm12_send_generic_async_cmd( &cmd, 1,
+		 	0, NULL, RFM12_STATE_NO_CHANGE);
+		 break;
+	  }
+   }
+
+   spin_unlock(&rfm12->rfm12_lock);
+	
 	return IRQ_HANDLED;
+}
+static void
+rfm12_finish_send_or_recv_callback(void *arg)
+{
+   unsigned long flags;
+   struct rfm12_spi_message* spi_msg =
+	  (struct rfm12_spi_message*)arg; 
+   struct rfm12_data* rfm12 =
+	  (struct rfm12_data*)spi_msg->context;
+   u8 should_release = 0;
+   
+   printk(KERN_INFO "rfm12_finish_send_or_recv_callback is called\n");
+   
+   
+   spin_lock_irqsave(&rfm12->rfm12_lock, flags);
+
+   rfm12_spi_completion_common(spi_msg);
+ 
+   if (!(should_release = rfm12->should_release)) {
+//	  rfm12_release_when_safe(rfm12);
+  // } else {
+	//rfm12_begin_sending_or_receiving(rfm12);
+	   printk(KERN_INFO "rfm12_begin_sending_or_receiving\n");
+   }
+
+   spin_unlock_irqrestore(&rfm12->rfm12_lock, flags);
+   
+//   if (!should_release)
+//      platform_irq_handled(rfm12->irq_identifier);
+}
+
+
+static int
+rfm12_finish_send_recv_common(struct rfm12_data* rfm12)
+{
+	uint16_t cmds[3];
+	printk(KERN_INFO "rfm12_finish_send_recv_common is called\n");
+	
+	
+	cmds[0] = RF_READ_STATUS;
+	cmds[1] = RF_IDLE_MODE;
+	cmds[2] = RF_TXREG_WRITE | 0xAA;
+	
+	rfm12->state = RFM12_STATE_IDLE;
+	
+	return rfm12_send_generic_async_cmd( cmds, 3,
+		0, rfm12_finish_send_or_recv_callback, RFM12_STATE_NO_CHANGE);
+}
+
+static int
+rfm12_finish_sending(struct rfm12_data* rfm12, int success)
+{
+   int err = 0, len = 0;
+   
+  // rfm12_update_rxtx_watchdog(rfm12, 1);
+   printk(KERN_INFO "rfm12_finish_sending is called\n");
+      
+   if (success) {
+	   len = rfm12->out_buf[1] + RF_EXTRA_LEN;
+	   
+	   memmove(rfm12->out_buf,
+	   		   rfm12->out_buf + len,
+	   		   DATA_BUF_SIZE - len
+	   );
+	   
+	   rfm12->out_cur_end -= len;
+	   rfm12->out_buf_pos = rfm12->out_buf;
+	   
+	   rfm12->pkts_sent++;
+	   rfm12->bytes_sent += len - RF_EXTRA_LEN;
+	   
+//	   wake_up_interruptible(&rfm12_wait_write);
+   }
+   
+   err = rfm12_finish_send_recv_common(rfm12);
+   
+   return err;
+}
+
+static void
+rfm12_send_spi_completion_handler(void *arg)
+{
+   unsigned long flags;
+   uint16_t status, valid_interrupt = 0, packet_finished = 0;
+   struct rfm12_spi_message* spi_msg =
+	  (struct rfm12_spi_message*)arg; 
+   struct rfm12_data* rfm12 =
+	  (struct rfm12_data*)spi_msg->context;
+
+	  printk(KERN_INFO "rfm12_send_spi_completion_handler is called\n");
+   spin_lock_irqsave(&rfm12->rfm12_lock, flags);
+
+   rfm12_spi_completion_common(spi_msg);
+
+   status = (spi_msg->spi_rx[0] << 8) | spi_msg->spi_rx[1];
+   rfm12->last_status = status;
+
+   valid_interrupt =
+   		((status & RF_STATUS_BIT_FFIT_RGIT) || (status & RF_STATUS_BIT_FFOV_RGUR));
+
+   if (valid_interrupt && NULL != rfm12->out_buf) {
+/*	   if (RETRY_SEND_ON_RGUR && (status & RF_STATUS_BIT_FFOV_RGUR)) {
+		   packet_finished = 1;
+		   rfm12->num_send_underruns++;
+		   (void)rfm12_finish_sending(rfm12, 0);
+		   printk(KERN_INFO "valid_interrupt\n");
+	   } else {*/
+		   printk(KERN_INFO "No valid_interrupt\n");
+//		   if (!RETRY_SEND_ON_RGUR && (status & RF_STATUS_BIT_FFOV_RGUR))
+		   	   rfm12->num_send_underruns++;
+		   
+		   switch(rfm12->state) {
+			   case RFM12_STATE_SEND_PRE1:
+			   	  rfm12->out_buf_pos = rfm12->out_buf;
+			   	  rfm12->out_cur_num_bytes = rfm12->out_buf_pos[1] + RF_EXTRA_LEN;
+			   case RFM12_STATE_SEND_PRE2:
+			   case RFM12_STATE_SEND_PRE3:
+			   case RFM12_STATE_SEND_SYN1:
+			   case RFM12_STATE_SEND_SYN2:
+			   case RFM12_STATE_SEND_TAIL1:
+			   case RFM12_STATE_SEND_TAIL2:
+			   	  rfm12->state++;
+			   	  break;
+			   case RFM12_STATE_SEND:
+			      rfm12->out_cur_num_bytes--;
+			      
+			      if (0 == rfm12->out_cur_num_bytes) {
+				      rfm12->state = RFM12_STATE_SEND_TAIL1;
+			      }
+			      
+			      break;
+			   case RFM12_STATE_SEND_TAIL3:
+			   	  packet_finished = 1;
+				  printk(KERN_INFO "packet_finished\n");
+			   	  (void)rfm12_finish_sending(rfm12, 1);
+			   	  break;
+			   default:
+				   printk(KERN_INFO "should never happen\n");
+			      // should never happen
+			      packet_finished = 1;
+			      (void)rfm12_finish_sending(rfm12, 0);
+			      break;
+		   }
+		   
+		 //  if (!packet_finished)
+		 	  // rfm12_update_rxtx_watchdog(rfm12, 0);
+  // 	   }
+   }
+
+   spin_unlock_irqrestore(&rfm12->rfm12_lock, flags);
+
+ //  if (!valid_interrupt || !packet_finished)
+ //  	   platform_irq_handled(rfm12->irq_identifier);
 }
 
 
@@ -237,7 +479,7 @@ static int Initialize(uint8_t nodeid, uint8_t freqBand, uint8_t groupid,
 
 
 static int rfm12_open(void){
-	unsigned long flags;
+//	unsigned long flags;
 	struct rfm12_data* rfm12;
 	int err;
 	
@@ -269,13 +511,24 @@ static int rfm12_open(void){
 	
 	rfm12->open++;	
 	if (1 == rfm12->open) {
-		rfm12->bytes_recvd = 0;
-		rfm12->bytes_sent = 0;
-		rfm12->num_overflows = 0;
-		rfm12->in_cur_num_bytes = 0;
-		rfm12->rxtx_watchdog_running = 0;
-		rfm12->in_cur_len_pos = rfm12->in_buf;
-		rfm12->in_cur_end = rfm12->in_buf;
+		 rfm12->bytes_recvd = 0;
+		 rfm12->pkts_recvd = 0;
+		 rfm12->bytes_sent = 0;
+		 rfm12->pkts_sent = 0;
+		 rfm12->num_recv_overflows = 0;
+		 rfm12->num_recv_timeouts = 0;
+		 rfm12->num_recv_crc16_fail = 0;
+		 rfm12->num_send_underruns = 0;
+		 rfm12->num_send_timeouts = 0;
+		 rfm12->in_cur_num_bytes = 0;
+		 rfm12->rxtx_watchdog_running = 0;
+		 rfm12->retry_sending_running = 0;
+		 rfm12->crc16 = 0;
+		 rfm12->last_status = 0;
+		 rfm12->should_release = 0;
+		 rfm12->in_cur_len_pos = rfm12->in_buf;
+		 rfm12->in_cur_end = rfm12->in_buf;
+		 rfm12->out_cur_end = rfm12->out_buf;
 		printk(KERN_INFO "RFM struct set\n");
 	}
 	
@@ -285,6 +538,7 @@ static int rfm12_open(void){
 	printk(KERN_INFO "RFM12 Receiving would start\n");
 	// err = rfm12_start_receiving(rfm12);
 
+	rfm12->state = RFM12_STATE_IDLE;
 	return err;
 }
 
@@ -295,14 +549,263 @@ static ssize_t read(struct file *file, char __user *buf, size_t count,
 	return 0;
 }
 
+
+struct spi_transfer rfm12_control_spi_transfer(struct rfm12_spi_message* msg,
+   u8 pos, uint16_t cmd)
+{   
+   return rfm12_make_spi_transfer(cmd,
+			   msg->spi_tx + 2*pos,
+			   msg->spi_rx + 2*pos);
+}
+
+static struct rfm12_spi_message* rfm12_claim_spi_message(void)
+{
+   u8 i;
+   struct rfm12_spi_message* rv = NULL;
+
+   for (i=0; i < NUM_MAX_CONCURRENT_MSG; i++) {
+	  if (0 == (dev_data.free_spi_msgs & (1 << i))) {
+		 dev_data.free_spi_msgs |= (1 << i);
+		 rv = &dev_data.spi_msgs[i];
+		 rv->pos = i;
+		 rv->context = &dev_data;
+			
+		 printk(KERN_INFO "created spi msg free = %d",dev_data.free_spi_msgs);
+		 break;
+	  }
+   }
+
+   return rv;
+}
+
+static void
+rfm12_unclaim_spi_message(struct rfm12_spi_message* spi_msg)
+{
+ //  struct rfm12_data* rfm12 =
+//	  (struct rfm12_data*)spi_msg->context;
+
+   dev_data.free_spi_msgs &= ~(1 << spi_msg->pos);   
+}
+
+static void
+rfm12_spi_completion_common(struct rfm12_spi_message* msg)
+{
+   rfm12_unclaim_spi_message(msg);
+}
+
+
+static void
+__rfm12_generic_spi_completion_handler(void *arg)
+{
+   struct rfm12_spi_message* spi_msg =
+	  (struct rfm12_spi_message*)arg;
+   struct rfm12_data* rfm12 =
+	  (struct rfm12_data*)spi_msg->context;
+	  
+	printk(KERN_INFO "__rfm12_generic_spi_completion_handler is called\n");
+
+	if (RFM12_STATE_NO_CHANGE != spi_msg->spi_finish_state){
+		rfm12->state = spi_msg->spi_finish_state;
+		printk(KERN_INFO "RFM12_STATE_NO_CHANGE\n"); 
+	}
+	rfm12_spi_completion_common(spi_msg);
+}
+static void
+rfm12_generic_spi_completion_handler(void *arg)
+{
+   unsigned long flags;
+   struct rfm12_spi_message* spi_msg =
+	  (struct rfm12_spi_message*)arg;
+   struct rfm12_data* rfm12 =
+	  (struct rfm12_data*)spi_msg->context;
+
+   spin_lock_irqsave(&rfm12->rfm12_lock, flags);
+
+   __rfm12_generic_spi_completion_handler(arg);
+
+   spin_unlock_irqrestore(&rfm12->rfm12_lock, flags);
+}
+
+
+
+static int
+rfm12_send_generic_async_cmd( uint16_t* cmds,int num_cmds, uint16_t delay_usecs, void (*callback)(void*),
+								 rfm12_state_t finish_state)
+{
+   int err, i;
+   struct rfm12_spi_message* spi_msg;   
+
+   spi_msg = rfm12_claim_spi_message();
+
+   if (NULL == spi_msg){
+	  printk(KERN_ALERT "Error could not get a SPI message\n");	
+	  return -EBUSY;
+   }
+   spi_msg->spi_finish_state = finish_state;
+   spi_message_init(&spi_msg->spi_msg);
+   spi_msg->spi_msg.complete = 
+	  (NULL == callback) ? rfm12_generic_spi_completion_handler : callback;
+   spi_msg->spi_msg.context = (void*)spi_msg;
+   spi_msg->spi_transfers[0] =
+   rfm12_control_spi_transfer(spi_msg, 0, cmds[0]);
+
+   if (num_cmds > 1) {
+	  for (i=1; i<num_cmds; i++) {
+		  printk(KERN_INFO "Number of commands is greater 1\n");
+		  spi_msg->spi_transfers[i-1].cs_change = 1;
+		  spi_msg->spi_transfers[i-1].delay_usecs = delay_usecs;
+		  spi_message_add_tail(&spi_msg->spi_transfers[i-1], &spi_msg->spi_msg);
+	
+		  spi_msg->spi_transfers[i] =
+			   rfm12_control_spi_transfer(spi_msg, i, cmds[i]);
+		   spi_message_add_tail(&spi_msg->spi_transfers[i], &spi_msg->spi_msg);
+	  }
+   } else{
+	  printk(KERN_INFO "only sending one command\n");
+	  spi_message_add_tail(&spi_msg->spi_transfers[0], &spi_msg->spi_msg);
+   }
+   
+   printk(KERN_ALERT "Now sending async message\n");
+   
+   err = spi_async(dev_data.spi, &spi_msg->spi_msg);
+   if (err)
+	  __rfm12_generic_spi_completion_handler((void*)spi_msg);
+
+   return err;
+}
+
+static void
+rfm12_trysend_completion_handler(void *arg)
+{
+   unsigned long flags;
+   uint16_t status = 0;
+   struct rfm12_spi_message* spi_msg =
+	  (struct rfm12_spi_message*)arg; 
+   struct rfm12_data* rfm12 =
+	  (struct rfm12_data*)spi_msg->context;
+	  
+	  
+	printk(KERN_INFO "Spy trysend complete called\n");
+
+   spin_lock_irqsave(&rfm12->rfm12_lock, flags);
+
+   rfm12->retry_sending_running = 0;
+
+   rfm12_spi_completion_common(spi_msg);
+
+   status = (spi_msg->spi_rx[0] << 8) | spi_msg->spi_rx[1];
+   
+   
+   printk(KERN_INFO "status = %d\n",status);
+
+   rfm12->last_status = status;
+   
+   if (RFM12_STATE_IDLE == rfm12->state &&
+       0 == (status & RF_STATUS_BIT_RSSI)) {
+	   uint16_t cmd[4];
+	   
+	   cmd[0] = RF_IDLE_MODE;
+	   cmd[1] = RF_READ_STATUS;
+	   cmd[2] = RF_RX_FIFO_READ;
+	   cmd[3] = RF_XMITTER_ON;
+	   
+	   rfm12->state = RFM12_STATE_SEND_PRE1;
+	   
+//	   rfm12_update_rxtx_watchdog(rfm12, 0);
+	   
+	   printk(KERN_INFO "sending next send start commands\n");
+	   
+	   rfm12_send_generic_async_cmd( cmd, 4,
+	   	   0, NULL, RFM12_STATE_NO_CHANGE);
+   } else {
+	   printk(KERN_INFO "status is not the correct one try resend\n");
+	   printk(KERN_INFO "current no retry done\n");
+	   // try again a bit later...
+/*	   init_timer(&rfm12->retry_sending_timer);
+	   rfm12->retry_sending_timer.expires = jiffies + TRYSEND_RETRY_JIFFIES;
+	   rfm12->retry_sending_timer.data = (unsigned long)rfm12;
+	   rfm12->retry_sending_timer.function = rfm12_trysend_retry_timer_expired;
+	   add_timer(&rfm12->retry_sending_timer);
+	   rfm12->retry_sending_running = 1;
+*/ 
+	   
+	}
+
+   spin_unlock_irqrestore(&rfm12->rfm12_lock, flags);
+}
+
+// 0 ... nothing to send, can go to listen state
+// 1 ... something needs sending, don't go to listen state
+static int rfm12_try_sending(void)
+{	
+	unsigned long flags;
+	int retval = 0;
+	
+//	spin_lock_irqsave(&dev_data.rfm12_lock, flags);
+	
+	if (NULL != dev_data.out_buf && dev_data.out_cur_end != dev_data.out_buf) {
+		uint16_t cmd = RF_READ_STATUS;
+		
+		printk(KERN_INFO " sending first async message\n");
+		
+		(void)rfm12_send_generic_async_cmd( &cmd, 1,
+			0, rfm12_trysend_completion_handler, RFM12_STATE_NO_CHANGE);
+		
+		retval = 1;
+	}else{
+		printk(KERN_ALERT "ERROR sending not started some buf problem \n");	
+	}
+	
+//	spin_unlock_irqrestore(&dev_data.rfm12_lock, flags);
+	
+	printk(KERN_INFO " finished start sending  \n");
+	
+	return retval;
+}
+
+
+static void rfm12_begin_sending_or_receiving(void)
+{	
+	if (RFM12_STATE_IDLE == dev_data.state) {
+		/*if (!rfm12_try_sending(rfm12))
+			rfm12_start_receiving(rfm12);
+			*/
+		printk(KERN_INFO " state is idle sending can start \n");
+		rfm12_try_sending();
+	}else{
+		printk(KERN_INFO " RFM12 has the wrange state \n");
+		
+	}
+}
+
+
 static ssize_t write(struct file *file, const char __user *buf,
 					 size_t count, loff_t *ppos)
 {
-	/*The copieng of the user buffer is done in SendStart*/
-//	SendStart(SERVER_MBED_NODE, "a",1, 0,0);
+	unsigned long flags;	
+	
 	printk(KERN_INFO " Write is called \n");
+	
+	spin_lock_irqsave(&dev_data.rfm12_lock, flags);
+	//add other data for sending crc andso 
+	dev_data.out_cur_end = &dev_data.out_buf[2];	
+	dev_data.out_buf[0] = 'a';
+	dev_data.out_buf[1] = 'a';
+	dev_data.out_buf[2] = 'a';
+	dev_data.out_buf[3] = 'a';
+	
+	printk(KERN_INFO " prepare start sending data = %c\n",dev_data.out_buf[0]);
+	
+	rfm12_begin_sending_or_receiving();
+	
+	printk(KERN_INFO " start sending finished \n");
+	
+	spin_unlock_irqrestore(&dev_data.rfm12_lock, flags);
+	
 	return 0;
 }
+
+
 /* Struct with the File Operations*/
 static const struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -350,6 +853,7 @@ static int init_Gpio(void){
 	printk(KERN_INFO "Successfully requested INPUT1 IRQ # %d\n", input_irqs[0]);
 
 	err = request_irq(input_irqs[0], input_ISR, IRQF_TRIGGER_FALLING | IRQF_DISABLED, "gpiomod#input1", (void*)&dev_data);
+	
 	if (err) {
 		printk(KERN_ERR "ERROR Unable to request IRQ: %d\n", err);
 		goto fail2;
@@ -365,6 +869,8 @@ fail1:
 		gpio_free_array(leds, ARRAY_SIZE(leds));
 	return ret;
 }
+
+
 
 static int init_Spi(void){
 
@@ -483,12 +989,16 @@ static void __exit RFM_deinit(void)
 
 	misc_deregister(&eud_dev);
 	// free irqs
-
+	
 	free_irq(input_irqs[0], NULL);
 
 	/* unregister */
 	gpio_free_array(leds,ARRAY_SIZE(leds));
 	gpio_free_array(input, ARRAY_SIZE(input));
+	
+	
+	kfree(dev_data.out_buf);
+	kfree(dev_data.in_buf);
 	
 	printk(KERN_INFO "RFM12 Successfully unloaded!\n");
 }

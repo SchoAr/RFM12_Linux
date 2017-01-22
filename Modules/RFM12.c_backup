@@ -369,7 +369,7 @@ uint16_t xfer2(uint16_t cmd){
   //  msg.context = (void*)msg;
  //   ret =  spi_sync(spi_device, &msg);
 //    ret =  spi_async_locked(spi_device, &msg);
-    ret = spi_sync(spi_deice, &msg);
+    ret = spi_sync(spi_device, &msg);
     if(ret)
         printk(KERN_INFO "XFER 2 failed\n");
 }

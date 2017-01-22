@@ -24,11 +24,24 @@
 /********************************/
 #define SPI_BUS 32766
 #define SPI_BUS_CS0 0	
-#define SPI_BUS_SPEED 200000
+#define SPI_BUS_SPEED 20000
 
 #define DATA_BUF_SIZE 512
 #define POWERON_RESET_WAIT_MILLIS   (5000)
 #define POWERON_RESET_WAIT_STEP     (20)
+#define NUM_MAX_CONCURRENT_MSG   (3)
+#define WRITE_TX_WAIT				(0)
+// 4 : 1 byte hdr, 1 byte len, 2 bytes crc16 (see JeeLib)
+#define RF_EXTRA_LEN	   2
+
+
+
+#define RF_STATUS_BIT_LBAT 			(0x0400)
+#define RF_STATUS_BIT_FFEM 			(0x0200)
+#define RF_STATUS_BIT_FFOV_RGUR		(0x2000)
+#define RF_STATUS_BIT_RSSI 			(0x0100)
+#define RF_STATUS_BIT_FFIT_RGIT		(0x8000)
+
 /********************************/
 #define ACK_TIME                 15000        //R of ms to wait for an ack (usually between 600ms and 1300ms)
 #define CLIENT_MOTEINO_NODE          1

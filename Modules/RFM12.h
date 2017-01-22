@@ -57,6 +57,7 @@
 #define rf12_data       (rf12_buf + 4)
 
 // RF12 command codes
+#define RF_READ_STATUS  0x0000
 #define RF_RECEIVER_ON  0x82DD
 #define RF_XMITTER_ON   0x823D
 #define RF_IDLE_MODE    0x820D
